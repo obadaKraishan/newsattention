@@ -492,6 +492,44 @@ def _months(start: date, end: date) -> list[tuple[date, date]]:
     return out
 
 
+def _covered_days(folder: Path) -> set[date]:
+    """Days already in a move-log folder: month files (``2023-01``) and ranges (``A_B``)."""
+    out: set[date] = set()
+    for path in folder.glob("*.jsonl"):
+        name = path.stem
+        if "_" in name:
+            a, b = (date.fromisoformat(x) for x in name.split("_"))
+            out.update(days_between(a, b))
+        else:
+            y, m = (int(x) for x in name.split("-"))
+            out.update(days_between(date(y, m, 1), date(y, m, calendar.monthrange(y, m)[1])))
+    return out
+
+
+def _move_windows(folder: Path, start: date, end: date) -> list[tuple[date, date, str]]:
+    """Windows still to read: whole months as ``YYYY-MM``, the rest as ``A_B`` day ranges."""
+    covered = _covered_days(folder)
+    out = []
+    for first, last in _months(start, end):
+        todo = [d for d in days_between(first, last) if d not in covered]
+        if not todo:
+            continue
+        month_end = calendar.monthrange(first.year, first.month)[1]
+        whole = first.day == 1 and last.day == month_end and len(todo) == month_end
+        if whole:
+            out.append((first, last, f"{first:%Y-%m}"))
+            continue
+        run_start = prev = todo[0]
+        for d in [*todo[1:], None]:  # type: ignore[list-item]
+            if d is not None and (d - prev).days == 1:
+                prev = d
+                continue
+            out.append((run_start, prev, f"{run_start.isoformat()}_{prev.isoformat()}"))
+            if d is not None:
+                run_start = prev = d
+    return out
+
+
 def scan_moves(
     client: WikimediaClient,
     store: Store,
@@ -500,21 +538,18 @@ def scan_moves(
     namespaces: tuple[int, ...] = (0, 118),
     say: Say = print,
 ) -> dict[str, int]:
-    """Read the English move log month by month (articles and drafts), into raw files.
+    """Read the English move log (articles and drafts) into raw files, each written once.
 
-    A finished month is one raw file (``ns0/2023-01.jsonl``); the current month's file is
-    named by its end date and replaced by the full month once the month is over.
+    A finished month read in one go is one file (``ns0/2023-01.jsonl``); any other stretch of
+    days is a range file (``ns0/2026-11-01_2026-11-12.jsonl``). Days already in a file are
+    never read again, so a daily run reads only the new day.
     """
     out = {"windows": 0, "entries": 0, "requests": 0}
     for ns in namespaces:
-        for first, last in _months(start, end):
-            full = last.day == calendar.monthrange(last.year, last.month)[1]
-            name = (
-                f"{first:%Y-%m}.jsonl" if full else f"{first.isoformat()}_{last.isoformat()}.jsonl"
-            )
-            path = store.raw / "movelog" / f"ns{ns}" / name
-            if path.exists():
-                continue
+        folder = store.raw / "movelog" / f"ns{ns}"
+        for first, last, stem in _move_windows(folder, start, end):
+            name = f"{stem}.jsonl"
+            path = folder / name
             entries: list[dict[str, Any]] = []
             cont: dict[str, Any] = {}
             while True:
@@ -560,9 +595,11 @@ def scan_moves(
 def load_moves(store: Store, page_ids: set[int]) -> dict[int, list[dict[str, Any]]]:
     """Moves of the given pages, oldest first, from the raw move-log files."""
     out: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    seen: set[Any] = set()
     for path in sorted((store.raw / "movelog").glob("ns*/*.jsonl")):
         for entry in read_jsonl(path):
-            if entry["page_id"] in page_ids:
+            if entry["page_id"] in page_ids and entry["logid"] not in seen:
+                seen.add(entry["logid"])
                 out[entry["page_id"]].append(entry)
     for moves in out.values():
         moves.sort(key=lambda e: e["timestamp"])

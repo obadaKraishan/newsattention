@@ -241,6 +241,11 @@ class SeriesBank:
                     first = self.index(date.fromisoformat(item["span_start"]))
                     last = self.index(date.fromisoformat(item["span_end"]))
                     old[key].append((first, last, arr))
+                elif item.get("span_start") and key in self.series:
+                    # A follow-up call: it updates only the days it asked for.
+                    first = self.index(date.fromisoformat(item["span_start"]))
+                    last = self.index(date.fromisoformat(item["span_end"]))
+                    self.series[key][first : last + 1] = arr[first : last + 1]
                 else:
                     self.series[key] = arr
         for key, spans in old.items():
@@ -307,10 +312,272 @@ def event_links(out: Path) -> list[tuple[str, date, str]]:
     return rows
 
 
+def summary_from_array(
+    arr: np.ndarray, start: date, event_day: date, last_day: date
+) -> measures.Summary:
+    """:func:`newsattention.measures.summarize` for a zero-filled array starting at ``start``."""
+    e = (event_day - start).days
+    last = (last_day - start).days
+    base = float(np.median(arr[e - 28 : e])) if e >= 28 else None
+    v0 = int(arr[e]) if 0 <= e <= last else None
+    v1 = int(arr[e + 1]) if 0 <= e + 1 <= last else None
+
+    def excess(k: int) -> float | None:
+        if base is None or e + k > last:
+            return None
+        return float(np.sum(arr[e : e + k + 1] - base))
+
+    window = arr[e : min(last, e + measures.HORIZON) + 1] if e <= last else arr[:0]
+    peak_day = peak_views = half = None
+    censored = False
+    if len(window):
+        best = int(np.argmax(window))
+        peak_day, peak_views = best, int(window[best])
+        if peak_views > 0:
+            below = np.flatnonzero(window[best + 1 :] < peak_views / 2)
+            if len(below):
+                half = int(below[0]) + 1
+            else:
+                censored = True
+    return measures.Summary(
+        baseline=base,
+        views_day0=v0,
+        lift_day0=None if v0 is None else measures.lift(v0, base),
+        lift_day1=None if v1 is None else measures.lift(v1, base),
+        excess_7=excess(7),
+        excess_28=excess(28),
+        peak_day=peak_day,
+        peak_views=peak_views,
+        half_life_days=half,
+        half_life_censored=censored,
+        observed_days=len(window),
+    )
+
+
+ATTENTION_SCHEMA = pa.schema(
+    [
+        ("event_id", pa.string()),
+        ("event_date", pa.date32()),
+        ("qid", pa.string()),
+        ("project", pa.string()),
+        ("country", pa.string()),
+        ("date", pa.date32()),
+        ("days_since_event", pa.int16()),
+        ("views", pa.int64()),
+        ("baseline", pa.float64()),
+        ("lift", pa.float64()),
+        ("source", pa.string()),
+    ]
+)
+
+SUMMARY_SCHEMA = pa.schema(
+    [
+        ("event_id", pa.string()),
+        ("event_date", pa.date32()),
+        ("qid", pa.string()),
+        ("project", pa.string()),
+        ("baseline", pa.float64()),
+        ("views_day0", pa.int64()),
+        ("lift_day0", pa.float64()),
+        ("lift_day1", pa.float64()),
+        ("excess_7", pa.float64()),
+        ("excess_28", pa.float64()),
+        ("peak_day", pa.int16()),
+        ("peak_views", pa.int64()),
+        ("half_life_days", pa.int16()),
+        ("half_life_censored", pa.bool_()),
+        ("observed_days", pa.int16()),
+        ("joined", pa.bool_()),
+        ("countries_day0", pa.int32()),
+        ("languages_lift2", pa.int16()),
+    ]
+)
+
+COUNTRY_SCHEMA = pa.schema(
+    [
+        ("event_id", pa.string()),
+        ("event_date", pa.date32()),
+        ("qid", pa.string()),
+        ("project", pa.string()),
+        ("country", pa.string()),
+        ("country_status", pa.string()),
+        ("baseline_published_days", pa.int16()),
+        ("baseline_file_days", pa.int16()),
+        ("baseline_median", pa.float64()),
+        ("views_day0", pa.int64()),
+        ("views_day1", pa.int64()),
+        ("lift_day0", pa.float64()),
+        ("older_method_days", pa.int16()),
+    ]
+)
+
+
+def older_method(country: str, day: date) -> bool:
+    """Rows from Wikimedia's older (historical) method: US until 2023-09-19, the rebuilt days."""
+    if day in backfill.DP_REBUILT_DAYS:
+        return True
+    return country == "US" and backfill.DP_US_MISSING[0] <= day <= backfill.DP_US_MISSING[1]
+
+
+def file_days(store: Store) -> frozenset[date]:
+    """Days that have a country file with rows."""
+    out = set()
+    for row in backfill.read_jsonl(store.root / "dp" / "filter_stats.jsonl"):
+        if row["rows_in_file"]:
+            out.add(date.fromisoformat(row["day"]))
+    return frozenset(out)
+
+
+def load_dp_window(store: Store, first: date, last: date, qids: set[str]) -> pa.Table | None:
+    parts = []
+    day = first
+    while day <= last:
+        path = store.dp_rows(day)
+        if path.exists():
+            parts.append(pq.read_table(path))
+        day += timedelta(days=1)
+    if not parts:
+        return None
+    table = pa.concat_tables(parts)
+    import pyarrow.compute as pc
+
+    table = table.filter(pc.is_in(table["qid"], value_set=pa.array(sorted(qids))))
+    return table.sort_by(
+        [
+            ("qid", "ascending"),
+            ("project", "ascending"),
+            ("country", "ascending"),
+            ("date", "ascending"),
+        ]
+    )
+
+
+def build_attention(
+    store: Store, out: Path, bank: SeriesBank, last_day: date, say: Say = print
+) -> dict[str, int]:
+    """attention, attention_summary and country_status, one file per event month."""
+    links = sorted(set(event_links(out)), key=lambda x: (x[1], x[0], x[2]))
+    projects: dict[str, list[str]] = defaultdict(list)
+    for qid, project in sorted(bank.series):
+        projects[qid].append(project)
+    have_files = file_days(store)
+    by_month: dict[str, list[tuple[str, date, str]]] = defaultdict(list)
+    for link in links:
+        by_month[link[1].strftime("%Y-%m")].append(link)
+    totals = {"attention": 0, "attention_summary": 0, "country_status": 0}
+    for month, month_links in sorted(by_month.items()):
+        att: dict[str, list[Any]] = {n: [] for n in ATTENTION_SCHEMA.names}
+        summ: dict[str, list[Any]] = {n: [] for n in SUMMARY_SCHEMA.names}
+        ctry: dict[str, list[Any]] = {n: [] for n in COUNTRY_SCHEMA.names}
+        first = min(d for _, d, _ in month_links) - timedelta(days=28)
+        last = max(d for _, d, _ in month_links) + timedelta(days=1)
+        dp = load_dp_window(store, first, last, {q for _, _, q in month_links})
+        index: dict[str, tuple[int, int]] = {}
+        if dp is not None and dp.num_rows:
+            q = dp["qid"].to_numpy(zero_copy_only=False)
+            starts = np.flatnonzero(np.r_[True, q[1:] != q[:-1]])
+            ends = np.r_[starts[1:], len(q)]
+            index = {q[a]: (int(a), int(b)) for a, b in zip(starts, ends, strict=True)}
+            col_project = dp["project"].to_numpy(zero_copy_only=False)
+            col_country = dp["country"].to_numpy(zero_copy_only=False)
+            col_date = dp["date"].to_pylist()
+            col_views = dp["views"].to_numpy()
+        for eid, d, qid in month_links:
+            # countries and their status
+            countries_day0: set[str] = set()
+            if qid in index:
+                a, b = index[qid]
+                groups: dict[tuple[str, str], dict[date, int]] = defaultdict(dict)
+                lo, hi = d - timedelta(days=28), d + timedelta(days=1)
+                for r in range(a, b):
+                    day = col_date[r]
+                    if lo <= day <= hi:
+                        groups[(col_project[r], col_country[r])][day] = int(col_views[r])
+                        if day == d:
+                            countries_day0.add(col_country[r])
+                for (project, country), published in sorted(groups.items()):
+                    st = measures.country_status(published, d, have_files)
+                    older = sum(1 for day in published if older_method(country, day))
+                    for name, value in (
+                        ("event_id", eid),
+                        ("event_date", d),
+                        ("qid", qid),
+                        ("project", project),
+                        ("country", country),
+                        ("country_status", st.status),
+                        ("baseline_published_days", st.baseline_published_days),
+                        ("baseline_file_days", st.baseline_file_days),
+                        ("baseline_median", st.baseline_median),
+                        ("views_day0", st.views_day0),
+                        ("views_day1", st.views_day1),
+                        ("lift_day0", st.lift_day0),
+                        ("older_method_days", older),
+                    ):
+                        ctry[name].append(value)
+            # languages
+            sums = []
+            for project in projects.get(qid, []):
+                arr = bank.series[(qid, project)]
+                sm = summary_from_array(arr, bank.start, d, last_day)
+                sums.append((project, sm))
+                e = (d - bank.start).days
+                for k in range(sm.observed_days):
+                    v = int(arr[e + k])
+                    att["event_id"].append(eid)
+                    att["event_date"].append(d)
+                    att["qid"].append(qid)
+                    att["project"].append(project)
+                    att["country"].append("")
+                    att["date"].append(d + timedelta(days=k))
+                    att["days_since_event"].append(k)
+                    att["views"].append(v)
+                    att["baseline"].append(sm.baseline)
+                    att["lift"].append(measures.lift(v, sm.baseline))
+                    att["source"].append("api")
+            lifted = sum(1 for _, sm in sums if max(sm.lift_day0 or 0, sm.lift_day1 or 0) >= 2)
+            for project, sm in sums:
+                row = {
+                    "event_id": eid,
+                    "event_date": d,
+                    "qid": qid,
+                    "project": project,
+                    **{
+                        k: getattr(sm, k)
+                        for k in (
+                            "baseline",
+                            "views_day0",
+                            "lift_day0",
+                            "lift_day1",
+                            "excess_7",
+                            "excess_28",
+                            "peak_day",
+                            "peak_views",
+                            "half_life_days",
+                            "half_life_censored",
+                            "observed_days",
+                        )
+                    },
+                    "joined": (qid, project) in bank.joined,
+                    "countries_day0": len(countries_day0),
+                    "languages_lift2": lifted,
+                }
+                for name in SUMMARY_SCHEMA.names:
+                    summ[name].append(row[name])
+        for name, cols, schema in (
+            ("attention", att, ATTENTION_SCHEMA),
+            ("attention_summary", summ, SUMMARY_SCHEMA),
+            ("country_status", ctry, COUNTRY_SCHEMA),
+        ):
+            folder = out / name
+            folder.mkdir(parents=True, exist_ok=True)
+            pq.write_table(
+                pa.table(cols, schema=schema), folder / f"{month}.parquet", compression="zstd"
+            )
+            totals[name] += len(cols["event_id"])
+        say(f"attention: {month} done ({len(month_links)} event pages)")
+    return totals
+
+
 def json_dump(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, default=str) + "\n")
-
-
-def _measures_unused() -> None:  # pragma: no cover - keeps the import for later stages
-    _ = measures

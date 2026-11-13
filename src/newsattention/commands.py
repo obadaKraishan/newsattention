@@ -199,6 +199,33 @@ def cmd_api_backfill(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tables(args: argparse.Namespace) -> int:
+    from newsattention import tables
+
+    store = store_of(args)
+    out = args.out
+    summary: dict[str, Any] = {}
+    summary.update(tables.build_events(store, out))
+    summary.update(tables.build_pages(store, out, SPAN_START, args.end))
+    summary.update(tables.build_views_dp(store, out))
+    plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
+    bank = tables.SeriesBank(SPAN_START, args.end)
+    bank.load(sorted((store.raw / "api").glob("chunk-*.parquet")), plan)
+    summary.update(tables.write_views_api(bank, out))
+    summary.update(tables.build_attention(store, out, bank, args.end))
+    tables.json_dump(out / "build_summary.json", summary)
+    _print(summary)
+    return 0
+
+
+def cmd_daily(args: argparse.Namespace) -> int:
+    from newsattention import daily
+
+    out = daily.run_daily(make_client(args), store_of(args), args.today, SPAN_START)
+    _print(out)
+    return 0
+
+
 def register(sub: Any) -> None:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--store", type=Path, default=DEFAULT_STORE)
@@ -265,3 +292,11 @@ def register(sub: Any) -> None:
 
     p = sub.add_parser("api-backfill", parents=[common, span], help="fetch the language views")
     p.set_defaults(func=cmd_api_backfill)
+
+    p = sub.add_parser("tables", parents=[common, span], help="build the Parquet tables")
+    p.add_argument("--out", type=Path, default=Path("data/interim/tables"))
+    p.set_defaults(func=cmd_tables)
+
+    p = sub.add_parser("daily", parents=[common], help="the daily update for yesterday")
+    p.add_argument("--today", type=date.fromisoformat, default=datetime.now(timezone.utc).date())
+    p.set_defaults(func=cmd_daily)

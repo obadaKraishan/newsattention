@@ -476,3 +476,16 @@ def test_api_backfill_chunks_and_resumes(make_client, store):
     assert set(table.column("kind").to_pylist()) == {"current", "old_title"}
     status = backfill.read_jsonl(store.root / "api" / "status.jsonl")
     assert [s["status"] for s in status] == ["ok", "no views", "error 400", "ok", "ok"]
+
+
+def test_move_windows_skip_covered_days(tmp_path):
+    folder = tmp_path / "ns0"
+    folder.mkdir()
+    (folder / "2025-01.jsonl").write_text("")
+    (folder / "2025-02-01_2025-02-10.jsonl").write_text("")
+    windows = backfill._move_windows(folder, date(2025, 1, 1), date(2025, 3, 31))
+    assert windows == [
+        (date(2025, 2, 11), date(2025, 2, 28), "2025-02-11_2025-02-28"),
+        (date(2025, 3, 1), date(2025, 3, 31), "2025-03"),
+    ]
+    assert backfill._move_windows(folder, date(2025, 1, 5), date(2025, 1, 20)) == []
