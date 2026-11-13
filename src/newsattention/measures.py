@@ -9,12 +9,18 @@ threshold or the day was not published, so country series get no baseline here.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from datetime import date, timedelta
 from statistics import median
 
-from newsattention.schema import Attention
+from newsattention.schema import LIFT_FLOOR, Attention
 
 BASELINE_DAYS = 28
+#: Days after the event that peak, half-life and excess views look at (day 0 to day 28).
+HORIZON = 28
+#: Country status thresholds (published baseline days out of 28).
+TRACKED_MIN_DAYS = 21
+APPEARED_MAX_DAYS = 2
 
 
 def baseline(
@@ -27,9 +33,9 @@ def baseline(
     return float(median(series[day] for day in days))
 
 
-def lift(views: int, base: float | None) -> float | None:
-    """Views over the baseline; None when the baseline is missing or zero."""
-    if not base:
+def lift(views: int, base: float | None, floor: float = LIFT_FLOOR) -> float | None:
+    """Views over the baseline; None when the baseline is missing or under the floor (10 views)."""
+    if base is None or base < floor or base <= 0:
         return None
     return views / base
 
@@ -103,3 +109,129 @@ def attention_rows(
             )
         )
     return rows
+
+
+@dataclass(frozen=True)
+class Summary:
+    """The accepted measures for one event page in one language.
+
+    ``excess_7`` and ``excess_28`` sum views minus the baseline over days 0 to 7 and 0 to 28;
+    they are None when the baseline is missing or the data end before that day. The peak and
+    the half-life look at days 0 to 28. ``half_life_censored`` is True when views had not
+    fallen below half the peak by day 28 or by the last day with data.
+    """
+
+    baseline: float | None
+    views_day0: int | None
+    lift_day0: float | None
+    lift_day1: float | None
+    excess_7: float | None
+    excess_28: float | None
+    peak_day: int | None
+    peak_views: int | None
+    half_life_days: int | None
+    half_life_censored: bool
+    observed_days: int
+
+
+def summarize(series: Mapping[date, int], event_day: date, last_day: date) -> Summary:
+    """Measures for one series; ``last_day`` is the last day whose views are complete."""
+    base = baseline(series, event_day)
+    end = min(last_day, event_day + timedelta(days=HORIZON))
+    days = [event_day + timedelta(days=k) for k in range((end - event_day).days + 1)]
+    days = [d for d in days if d in series]
+    v0 = series.get(event_day)
+    v1 = series.get(event_day + timedelta(days=1))
+
+    def excess(k: int) -> float | None:
+        if base is None or last_day < event_day + timedelta(days=k):
+            return None
+        span = [event_day + timedelta(days=j) for j in range(k + 1)]
+        if any(d not in series for d in span):
+            return None
+        return float(sum(series[d] - base for d in span))
+
+    peak_day = peak_views = half = None
+    censored = False
+    if days:
+        best = max(days, key=lambda d: (series[d], -d.toordinal()))
+        peak_day, peak_views = (best - event_day).days, series[best]
+        if peak_views > 0:
+            later = [d for d in days if d > best and series[d] < peak_views / 2]
+            if later:
+                half = (later[0] - best).days
+            else:
+                censored = True
+    return Summary(
+        baseline=base,
+        views_day0=v0,
+        lift_day0=None if v0 is None else lift(v0, base),
+        lift_day1=None if v1 is None else lift(v1, base),
+        excess_7=excess(7),
+        excess_28=excess(28),
+        peak_day=peak_day,
+        peak_views=peak_views,
+        half_life_days=half,
+        half_life_censored=censored,
+        observed_days=len(days),
+    )
+
+
+@dataclass(frozen=True)
+class CountryStatus:
+    """The conservative country measure for one event page, language and country.
+
+    Built from published rows only: a missing row is never read as zero or filled in.
+
+    - ``tracked``: published on at least 21 of the 28 baseline days; the lift uses the median
+      of the published baseline days only.
+    - ``appeared``: published on day 0 or day 1 and on at most 2 baseline days. It means the
+      count rose above the publication threshold, not that it started from nothing.
+    - ``not_published``: no row on day 0 or day 1 (and not tracked).
+    - ``unclear``: everything else.
+    - ``insufficient_files``: fewer than 21 of the baseline days, or neither day 0 nor day 1,
+      have a country file at all (Wikimedia's own missing days or the start of the data), so
+      the status cannot be decided.
+    """
+
+    status: str
+    baseline_published_days: int
+    baseline_file_days: int
+    baseline_median: float | None
+    views_day0: int | None
+    views_day1: int | None
+    lift_day0: float | None
+
+
+def country_status(
+    published: Mapping[date, int], event_day: date, file_days: set[date] | frozenset[date]
+) -> CountryStatus:
+    """Status for one country; ``file_days`` are the days that have a country file."""
+    window = [event_day - timedelta(days=k) for k in range(1, BASELINE_DAYS + 1)]
+    with_file = [d for d in window if d in file_days]
+    on = [published[d] for d in window if d in published]
+    d0 = published.get(event_day)
+    d1 = published.get(event_day + timedelta(days=1))
+    day1 = event_day + timedelta(days=1)
+    base = float(median(on)) if len(on) >= TRACKED_MIN_DAYS else None
+    if len(on) >= TRACKED_MIN_DAYS:
+        status = "tracked"
+    elif len(with_file) < TRACKED_MIN_DAYS or (
+        event_day not in file_days and day1 not in file_days
+    ):
+        status = "insufficient_files"
+    elif d0 is None and d1 is None:
+        status = "not_published"
+    elif len(on) <= APPEARED_MAX_DAYS:
+        status = "appeared"
+    else:
+        status = "unclear"
+    return CountryStatus(
+        status=status,
+        baseline_published_days=len(on),
+        baseline_file_days=len(with_file),
+        baseline_median=base,
+        views_day0=d0,
+        views_day1=d1,
+        lift_day0=(d0 / base) if (base and d0 is not None) else None,
+    )

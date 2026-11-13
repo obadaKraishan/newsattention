@@ -239,13 +239,17 @@ def test_attention_lift_must_equal_views_over_baseline():
         attention(lift=2.0)
 
 
-def test_attention_lift_needs_a_baseline_above_zero():
-    with pytest.raises(ValidationError, match="baseline above zero"):
+def test_attention_lift_needs_a_baseline_at_the_floor():
+    with pytest.raises(ValidationError, match="the floor"):
         attention(baseline=0.0, lift=1.0)
-    with pytest.raises(ValidationError, match="baseline above zero"):
+    with pytest.raises(ValidationError, match="the floor"):
         attention(baseline=None, lift=1.0)
+    with pytest.raises(ValidationError, match="the floor"):
+        attention(baseline=9.5, views=19, lift=2.0)
+    assert attention(baseline=9.5, lift=None).lift is None
     assert attention(baseline=0.0, lift=None).lift is None
     assert attention(baseline=None, lift=None).baseline is None
+    assert attention(baseline=10.0, views=30, lift=3.0).lift == 3.0
 
 
 def test_attention_baseline_without_lift_is_an_error():

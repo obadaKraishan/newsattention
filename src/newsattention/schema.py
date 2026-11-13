@@ -43,6 +43,10 @@ MONTHS = [
     "December",
 ]
 
+#: The smallest baseline (median daily views) for which a lift is given. Below it a handful of
+#: views gives absurd ratios.
+LIFT_FLOOR = 10.0
+
 #: The smallest count in the differentially private files. The README releases rows "with >90
 #: pageviews" for lower-risk countries; the threshold is applied before rounding, so published
 #: counts start at 90 (checked in the 2026-10-16 and 2026-11-12 files).
@@ -227,6 +231,10 @@ class Views(_Frozen):
     views: int = Field(ge=0)
     source: Literal["dp", "api"]
     noisy: bool
+    joined: bool = Field(
+        default=False,
+        description="True for a moved page's series joined across its titles (api only)",
+    )
 
     @field_validator("qid")
     @classmethod
@@ -247,6 +255,8 @@ class Views(_Frozen):
                 )
             if not self.noisy:
                 raise ValueError("Rows from the differentially private files are noisy: true.")
+            if self.joined:
+                raise ValueError("Only Analytics API series are joined across titles.")
             if self.views < DP_MIN_RELEASED:
                 raise ValueError(
                     f"A differentially private count of {self.views} is below the lowest "
@@ -304,13 +314,145 @@ class Attention(_Frozen):
         if self.source == "dp" and not COUNTRY_RE.match(self.country):
             raise ValueError("Rows from the differentially private files need a country.")
         if self.lift is not None:
-            if not self.baseline:
-                raise ValueError("lift needs a baseline above zero.")
+            if self.baseline is None or self.baseline < LIFT_FLOOR:
+                raise ValueError(
+                    f"lift needs a baseline of at least {LIFT_FLOOR:g} views (the floor)."
+                )
             expected = self.views / self.baseline
             if not math.isclose(self.lift, expected, rel_tol=1e-6, abs_tol=1e-9):
                 raise ValueError(f"lift is {self.lift}, but views / baseline is {expected:.6g}.")
-        elif self.baseline:
-            raise ValueError("lift is empty although the baseline is above zero.")
+        elif self.baseline is not None and self.baseline >= LIFT_FLOOR:
+            raise ValueError("lift is empty although the baseline is at or above the floor.")
+        return self
+
+
+COUNTRY_STATUSES = ("tracked", "appeared", "not_published", "unclear", "insufficient_files")
+
+
+class AttentionSummary(_Frozen):
+    """Derived: the measures for one event, item and language (Analytics API counts)."""
+
+    event_id: str
+    event_date: date
+    qid: str
+    project: str
+    baseline: float | None = Field(ge=0)
+    views_day0: int | None = Field(ge=0)
+    lift_day0: float | None = Field(ge=0)
+    lift_day1: float | None = Field(ge=0)
+    excess_7: float | None
+    excess_28: float | None
+    peak_day: int | None = Field(ge=0, le=28)
+    peak_views: int | None = Field(ge=0)
+    half_life_days: int | None = Field(ge=1, le=28)
+    half_life_censored: bool
+    observed_days: int = Field(ge=0, le=29)
+    joined: bool
+    countries_day0: int = Field(ge=0, description="Countries with a published row on day 0")
+    languages_lift2: int = Field(ge=0, description="Languages with lift of 2 or more on day 0 or 1")
+
+    @field_validator("event_id")
+    @classmethod
+    def _event_id(cls, value: str) -> str:
+        return check_event_id(value)
+
+    @field_validator("qid")
+    @classmethod
+    def _qid(cls, value: str) -> str:
+        return check_qid(value)
+
+    @field_validator("project")
+    @classmethod
+    def _project(cls, value: str) -> str:
+        return check_project(value)
+
+    @model_validator(mode="after")
+    def _rules(self) -> AttentionSummary:
+        if self.event_id[:10] != self.event_date.isoformat():
+            raise ValueError("event_date does not match the date in event_id.")
+        low = self.baseline is None or self.baseline < LIFT_FLOOR
+        if low and (self.lift_day0 is not None or self.lift_day1 is not None):
+            raise ValueError(f"A lift needs a baseline of at least {LIFT_FLOOR:g} views.")
+        if self.half_life_censored and self.half_life_days is not None:
+            raise ValueError("A censored half-life has no value.")
+        if self.baseline is None and (self.excess_7 is not None or self.excess_28 is not None):
+            raise ValueError("Excess views need a baseline.")
+        return self
+
+
+class CountryAttention(_Frozen):
+    """Derived: the conservative country measure for one event, item, language and country."""
+
+    event_id: str
+    event_date: date
+    qid: str
+    project: str
+    country: str
+    country_status: Literal["tracked", "appeared", "not_published", "unclear", "insufficient_files"]
+    baseline_published_days: int = Field(ge=0, le=28)
+    baseline_file_days: int = Field(ge=0, le=28)
+    baseline_median: float | None = Field(ge=DP_MIN_RELEASED)
+    views_day0: int | None = Field(ge=DP_MIN_RELEASED)
+    views_day1: int | None = Field(ge=DP_MIN_RELEASED)
+    lift_day0: float | None = Field(ge=0)
+    older_method_days: int = Field(
+        ge=0, le=30, description="Days in the window whose rows came from the older method"
+    )
+
+    @field_validator("event_id")
+    @classmethod
+    def _event_id(cls, value: str) -> str:
+        return check_event_id(value)
+
+    @field_validator("qid")
+    @classmethod
+    def _qid(cls, value: str) -> str:
+        return check_qid(value)
+
+    @field_validator("project")
+    @classmethod
+    def _project(cls, value: str) -> str:
+        return check_project(value)
+
+    @model_validator(mode="after")
+    def _rules(self) -> CountryAttention:
+        if not COUNTRY_RE.match(self.country):
+            raise ValueError("country must be a two-letter code.")
+        if self.baseline_published_days > self.baseline_file_days:
+            raise ValueError("More published baseline days than days with a file.")
+        tracked = self.baseline_published_days >= 21
+        if (self.country_status == "tracked") != tracked:
+            raise ValueError("tracked means at least 21 published baseline days, and only that.")
+        on_event = self.views_day0 is not None or self.views_day1 is not None
+        if self.country_status == "appeared" and (not on_event or self.baseline_published_days > 2):
+            raise ValueError("appeared needs a row on day 0 or 1 and at most 2 baseline days.")
+        if self.country_status == "not_published" and on_event:
+            raise ValueError("not_published means no row on day 0 or day 1.")
+        if self.country_status != "tracked" and (
+            self.lift_day0 is not None or self.baseline_median is not None
+        ):
+            raise ValueError("Only tracked countries have a baseline and a lift.")
+        return self
+
+
+class PageInfo(_Frozen):
+    """One linked English article: features the own-article rules will use."""
+
+    page_id: int = Field(gt=0)
+    qid: str | None
+    title: str
+    created_estimate: date
+    created_estimate_inside_anchors: bool
+    moves_in_span: int = Field(ge=0)
+    old_titles: list[str]
+    move_dates: list[date]
+
+    @model_validator(mode="after")
+    def _moves(self) -> PageInfo:
+        if not (len(self.old_titles) == len(self.move_dates) == self.moves_in_span):
+            raise ValueError("old_titles, move_dates and moves_in_span must agree.")
+        if self.qid is not None:
+            check_qid(self.qid)
         return self
 
 
@@ -318,7 +460,10 @@ TABLES: dict[str, type[_Frozen]] = {
     "events": Event,
     "event_pages": EventPage,
     "views": Views,
+    "attention_summary": AttentionSummary,
     "attention": Attention,
+    "country_status": CountryAttention,
+    "pages": PageInfo,
 }
 
 #: The columns that must be unique together in each table.
@@ -327,7 +472,10 @@ KEYS: dict[str, tuple[str, ...]] = {
     "event_pages": ("event_id", "link_order"),
     "views": ("date", "qid", "project", "country", "source"),
     "attention": ("event_id", "qid", "project", "country", "date", "source"),
+    "attention_summary": ("event_id", "qid", "project"),
+    "country_status": ("event_id", "qid", "project", "country"),
+    "pages": ("page_id",),
 }
 
 #: List fields, written with "|" between items in CSV files.
-LIST_FIELDS = {"source_domains", "story_titles"}
+LIST_FIELDS = {"source_domains", "story_titles", "old_titles", "move_dates"}

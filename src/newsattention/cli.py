@@ -27,15 +27,24 @@ def _client(log: Path, since: str | None, max_bytes: int) -> WikimediaClient:
 
 def cmd_validate(args: argparse.Namespace) -> int:
     status = 0
-    for path in args.files:
+    files: list[Path] = []
+    for name in args.files:
+        path = Path(name)
+        files.extend(sorted(path.rglob("*.parquet")) if path.is_dir() else [path])
+    for path in files:
         try:
-            report = validate_file(Path(path), args.table)
+            report = validate_file(Path(path), args.table, args.sample)
         except (OSError, ValueError) as exc:
             print(f"{path}: {exc}")
             status = 1
             continue
         if report.ok:
-            print(f"{path}: OK ({report.rows} {report.table} rows)")
+            extra = (
+                f", rules checked on a sample of {report.checked_rows:,}"
+                if report.checked_rows < report.rows
+                else ""
+            )
+            print(f"{path}: OK ({report.rows} {report.table} rows{extra})")
             continue
         status = 1
         print(f"{path}: {len(report.errors)} problem(s) in {report.rows} {report.table} rows")
@@ -138,8 +147,25 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     val = sub.add_parser("validate", help="check table files against the schema")
-    val.add_argument("files", nargs="+", help=".jsonl or .csv files")
-    val.add_argument("--table", choices=["events", "event_pages", "views", "attention"])
+    val.add_argument("files", nargs="+", help=".jsonl, .csv or .parquet files, or folders")
+    val.add_argument(
+        "--table",
+        choices=[
+            "events",
+            "event_pages",
+            "views",
+            "attention",
+            "attention_summary",
+            "country_status",
+            "pages",
+        ],
+    )
+    val.add_argument(
+        "--sample",
+        type=int,
+        default=20_000,
+        help="rows checked against every rule in large Parquet files",
+    )
     val.add_argument("--max-errors", type=int, default=20)
     val.set_defaults(func=cmd_validate)
 

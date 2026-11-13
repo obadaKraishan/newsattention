@@ -85,12 +85,51 @@ def cmd_pages(args: argparse.Namespace) -> int:
     store = store_of(args)
     client = make_client(args)
     pages = linked_pages(store)
-    anchors = backfill.creation_anchors(
-        client, store, (pid for _, pid in pages.values()), args.anchors
-    )
+    ids = sorted({pid for _, pid in pages.values()})
+    anchors = backfill.creation_anchors(client, store, ids, args.anchors)
+    check = validate_creation(client, store, ids, anchors, args.check, args.seed)
     moves = backfill.scan_moves(client, store, args.moves_start, args.end)
-    _print({"pages": len(pages), "anchors": len(anchors), "moves": moves})
+    _print({"pages": len(pages), "anchors": len(anchors), "creation_check": check, "moves": moves})
     return 0
+
+
+def validate_creation(
+    client: WikimediaClient,
+    store: backfill.Store,
+    ids: list[int],
+    anchors: list[dict[str, Any]],
+    n: int,
+    seed: int,
+) -> dict[str, Any]:
+    """Compare the page-id estimate with the true first revision on ``n`` random other pages."""
+    import random
+
+    path = store.root / "pages" / "creation_check.jsonl"
+    have = {r["page_id"]: r for r in backfill.read_jsonl(path)}
+    taken = {a["page_id"] for a in anchors}
+    pool = [pid for pid in ids if pid not in taken]
+    for pid in random.Random(seed).sample(pool, min(n, len(pool))):
+        if pid not in have:
+            row = {"page_id": pid, "first_revision": backfill.first_revision(client, pid)}
+            backfill.append_jsonl(path, [row])
+            have[pid] = row
+    model = backfill.CreationModel(anchors)
+    errors = []
+    for row in have.values():
+        if not row["first_revision"]:
+            continue
+        true = datetime.fromisoformat(row["first_revision"].replace("Z", "+00:00"))
+        est, _ = model.estimate(row["page_id"])
+        errors.append(abs((est - true).total_seconds()) / 86400)
+    errors.sort()
+    if not errors:
+        return {"checked": 0}
+    return {
+        "checked": len(errors),
+        "median_error_days": round(errors[len(errors) // 2], 2),
+        "p90_error_days": round(errors[int(len(errors) * 0.9)], 2),
+        "max_error_days": round(errors[-1], 2),
+    }
 
 
 def cmd_dp_download(args: argparse.Namespace) -> int:
@@ -105,30 +144,46 @@ def cmd_dp_filter(args: argparse.Namespace) -> int:
     return 0
 
 
+def plan_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    return (item["qid"], item["project"], item["title"], item["kind"], item.get("span_start"))
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
+    """Write the language-view plan, or append to it.
+
+    ``--english-only`` writes the English current titles alone, so the backfill can start
+    before the country files are filtered. A later run without it appends the other
+    languages and the old titles of moved pages; entries already planned keep their index, so
+    a running or resumed backfill is never disturbed.
+    """
     store = store_of(args)
     pages = linked_pages(store)
-    totals = backfill.dp_totals(store) if not args.english_only else {}
+    path = store.root / "api" / "plan.jsonl"
+    existing = backfill.read_jsonl(path)
+    if existing and args.force:
+        raise SystemExit("A plan exists; it is only ever appended to. Move it aside by hand.")
+    totals = {} if args.english_only else backfill.dp_totals(store)
     plan = backfill.plan_languages(pages, totals, args.languages)
     client = make_client(args)
     plan, title_stats = backfill.fill_titles(client, plan)
-    moves = backfill.load_moves(store, {pid for _, pid in pages.values()})
-    plan = backfill.add_old_titles(plan, moves, SPAN_START, args.end)
-    path = store.root / "api" / "plan.jsonl"
-    if path.exists() and not args.force:
-        raise SystemExit(f"{path} exists; pass --force to replace it (its progress file too).")
+    if not args.english_only:
+        moves = backfill.load_moves(store, {pid for _, pid in pages.values()})
+        plan = backfill.add_old_titles(plan, moves, SPAN_START, args.end)
+    have = {plan_key(p) for p in existing}
+    new = [p for p in plan if plan_key(p) not in have]
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(json.dumps(p, ensure_ascii=False) + "\n" for p in plan))
-    calls = len(plan)
+    backfill.append_jsonl(path, new)
+    full = existing + new
     summary = {
         "items": len(pages),
-        "calls": calls,
+        "calls": len(full),
+        "appended_now": len(new),
         "english": sum(
-            1 for p in plan if p["project"] == "en.wikipedia" and p["kind"] == "current"
+            1 for p in full if p["project"] == "en.wikipedia" and p["kind"] == "current"
         ),
-        "english_old_titles": sum(1 for p in plan if p["kind"] == "old_title"),
-        "other_languages": sum(1 for p in plan if p["project"] != "en.wikipedia"),
-        "hours_at_min_interval": round(calls * args.api_interval / 3600, 1),
+        "english_old_titles": sum(1 for p in full if p["kind"] == "old_title"),
+        "other_languages": sum(1 for p in full if p["project"] != "en.wikipedia"),
+        "hours_at_api_interval": round(len(full) * args.api_interval / 3600, 1),
         **title_stats,
     }
     (store.root / "api" / "plan_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
@@ -189,6 +244,8 @@ def register(sub: Any) -> None:
 
     p = sub.add_parser("pages", parents=[common, span], help="creation anchors and the move log")
     p.add_argument("--anchors", type=int, default=200)
+    p.add_argument("--check", type=int, default=60, help="random pages to check the estimate on")
+    p.add_argument("--seed", type=int, default=20261113)
     p.add_argument("--moves-start", type=date.fromisoformat, default=SPAN_START)
     p.set_defaults(func=cmd_pages)
 
@@ -203,7 +260,7 @@ def register(sub: Any) -> None:
     p.add_argument("--languages", type=int, default=5)
     p.add_argument("--api-interval", type=float, default=0.55)
     p.add_argument("--english-only", action="store_true")
-    p.add_argument("--force", action="store_true")
+    p.add_argument("--force", action="store_true", help="refused: a plan is only appended to")
     p.set_defaults(func=cmd_plan)
 
     p = sub.add_parser("api-backfill", parents=[common, span], help="fetch the language views")

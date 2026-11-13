@@ -1,8 +1,14 @@
 """Check a table file against the schema: ``newsattention validate FILE``.
 
-A file is JSON Lines (``.jsonl``) or CSV (``.csv``; list fields are written with ``|`` between
-items and empty cells mean "no value"). The table is taken from ``--table`` or from the file
-name: ``events``, ``event_pages``, ``views`` or ``attention`` at the start of the name.
+A file is JSON Lines (``.jsonl``), CSV (``.csv``; list fields are written with ``|`` between
+items and empty cells mean "no value") or Parquet (``.parquet``). The table is taken from
+``--table``, from the start of the file name, or (for Parquet files named by month) from the
+folder name.
+
+JSON Lines and CSV files are checked row by row. A Parquet file is checked in three ways: its
+columns must be the model's fields; the table's unique key and the required (non-empty)
+fields are checked on every row; and every rule of the model is checked on every row of
+files up to ``sample`` rows, or on a random sample of ``sample`` rows of larger files.
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ class Report:
     table: str
     rows: int = 0
     errors: list[str] = field(default_factory=list)
+    checked_rows: int = 0
 
     @property
     def ok(self) -> bool:
@@ -35,11 +42,14 @@ class Report:
 
 
 def table_for(path: Path) -> str:
-    """Guess the table from the file name (longest match first)."""
-    name = path.name.lower()
-    for table in sorted(TABLES, key=len, reverse=True):
-        if name.startswith(table):
-            return table
+    """Guess the table from the file name, or from the folder of a month file (longest first)."""
+    names = [path.name.lower()]
+    if path.suffix == ".parquet":
+        names.append(path.parent.name.lower())
+    for name in names:
+        for table in sorted(TABLES, key=len, reverse=True):
+            if name.startswith(table):
+                return table
     raise ValueError(
         f"Cannot tell which table {path.name} holds. Name it events*, event_pages*, views* or "
         "attention*, or pass --table."
@@ -83,7 +93,9 @@ def _describe(exc: ValidationError) -> list[str]:
     return out
 
 
-def validate_file(path: Path | str, table: str | None = None) -> Report:
+def validate_file(
+    path: Path | str, table: str | None = None, sample: int = 20_000, seed: int = 0
+) -> Report:
     """Check every row of ``path``, then the table's unique key."""
     path = Path(path)
     table = table or table_for(path)
@@ -91,12 +103,14 @@ def validate_file(path: Path | str, table: str | None = None) -> Report:
         raise ValueError(f"Unknown table {table!r}. Use one of: {', '.join(TABLES)}.")
     model = TABLES[table]
     report = Report(path=path, table=table)
+    if path.suffix == ".parquet":
+        return _validate_parquet(path, table, report, sample, seed)
     if path.suffix == ".csv":
         rows: Iterator[tuple[int, Any]] = _csv_rows(path)
     elif path.suffix == ".jsonl":
         rows = _jsonl_rows(path)
     else:
-        raise ValueError(f"{path.name}: use a .jsonl or .csv file.")
+        raise ValueError(f"{path.name}: use a .jsonl, .csv or .parquet file.")
     seen: dict[tuple[Any, ...], int] = {}
     for line, data in rows:
         report.rows += 1
@@ -122,6 +136,63 @@ def validate_file(path: Path | str, table: str | None = None) -> Report:
             )
         else:
             seen[key] = line
+    report.checked_rows = report.rows
     if report.rows == 0:
         report.errors.append(f"{path.name} has no rows.")
+    return report
+
+
+def _required(model: Any) -> list[str]:
+    return [
+        name
+        for name, f in model.model_fields.items()
+        if f.is_required() and "None" not in str(f.annotation)
+    ]
+
+
+def _validate_parquet(path: Path, table: str, report: Report, sample: int, seed: int) -> Report:
+    import random
+
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    model = TABLES[table]
+    data = pq.read_table(path)
+    report.rows = data.num_rows
+    fields = list(model.model_fields)
+    missing = [f for f in fields if f not in data.column_names]
+    extra = [c for c in data.column_names if c not in fields]
+    if missing or extra:
+        report.errors.append(
+            f"{path.name}: columns differ from the {table} table "
+            f"(missing: {', '.join(missing) or 'none'}; extra: {', '.join(extra) or 'none'})."
+        )
+        return report
+    if report.rows == 0:
+        report.errors.append(f"{path.name} has no rows.")
+        return report
+    for name in _required(model):
+        nulls = data[name].null_count
+        if nulls:
+            report.errors.append(f"{path.name}, {name}: {nulls} empty values in a required field.")
+    keys = list(KEYS[table])
+    counts = data.group_by(keys).aggregate([([], "count_all")])
+    dups = counts.filter(pc.greater(counts["count_all"], 1))
+    if dups.num_rows:
+        first = {k: dups[k][0].as_py() for k in keys}
+        report.errors.append(
+            f"{path.name}: {dups.num_rows} {', '.join(keys)} values appear more than once "
+            f"(first: {first}); each must be unique."
+        )
+    if report.rows <= sample:
+        idx = list(range(report.rows))
+    else:
+        idx = sorted(random.Random(seed).sample(range(report.rows), sample))
+    rows = data.take(idx).to_pylist()
+    for i, row in zip(idx, rows, strict=True):
+        try:
+            model.model_validate(row)
+        except ValidationError as exc:
+            report.errors.extend(f"row {i + 1}, {msg}" for msg in _describe(exc))
+    report.checked_rows = len(idx)
     return report
