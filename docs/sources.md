@@ -63,7 +63,8 @@ Primary pages: [current README](https://analytics.wikimedia.org/published/datase
   and names the files `<year>-<month>-<day>.csv`. **The files actually published are
   `YYYY-MM-DD.tsv`, tab-separated, without a header, with seven columns**: the country's name,
   its two-letter code, then project, page_id, page_title (with underscores), item_id and gbc
-  (checked in the files for 2026-10-16 and 2026-11-12).
+  (checked in the files for 2026-10-16 and 2026-11-12, and in the earliest file, 2023-02-06,
+  which has 268,416 rows, all of seven columns).
 - **Which views.** Only "the first 10 unique pageviews for a given device in a given day", and
   only pages that "have received >150 global pageviews on that day".
 - **Noise.** Gaussian zCDP, "sensitivity=10 unique pageviews", with rho by risk class; "For lower
@@ -84,7 +85,11 @@ Primary pages: [current README](https://analytics.wikimedia.org/published/datase
 - **Missing data.** "data from the United States was not published from 6 Feb 2023 to 19 Sep
   2023", and "seven days of data (19 Jun 2023; 25 Oct 2023; and 13, 17, 19, 23, and 27 Nov 2023)
   were previously missing"; for those, "we've made smaller datasets for those countries/days
-  available using the same techniques ... as the historical pageview dataset". In the listing
+  available using the same techniques ... as the historical pageview dataset". **The current
+  files do hold United States rows for 2023-02-06 to 2023-09-19, but from that older method:**
+  the 2023-02-06 file has 44,219 United States rows whose smallest count is 450 (the historical
+  set's threshold), against 90 for every other country. So a file of that period mixes two
+  methods, and NewsAttention records the smallest count per country and day as data. In the listing
   those seven files are about 6 MB, against 20 to 26 MB for normal days. The file for
   **2026-11-08 is empty** (0 bytes, posted 2026-11-09 02:39).
 - **Bots.** "From 25 May 2023 on, a more aggressive filter was used to only retrieve

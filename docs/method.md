@@ -1,8 +1,8 @@
 # Method
 
-**DRAFT: not yet accepted by the maintainer.** Numbers marked "prototype" come from a 28-day
-sample (portal days 2026-10-16 to 2026-11-12, read on 2026-11-13) and are there to show the
-scale, not as results.
+**The measures in section 2 are accepted. The rule for the event's own article (section 4) is
+still a DRAFT.** Numbers marked "prototype" come from a 28-day sample (portal days 2026-10-16
+to 2026-11-12); numbers marked "version 1" come from the backfill from 2023-02-06.
 
 ## 1. Units
 - **Event:** one bullet on an English Current Events Portal day page that reports something
@@ -26,17 +26,39 @@ An item is followed across languages through its Wikidata id: the English page o
 its German page are the same item in two languages.
 
 ## 2. Measures
-All measures are computed per event, page and language (or country), from the event day on.
+All language measures are computed per event, item and language edition, from Analytics API
+counts (exact). The country measure is computed per event, item, language and country, from
+Wikimedia's differentially private counts as published.
 
 | Measure | Definition | Notes |
 |---|---|---|
-| Baseline | Median daily views over the 28 days before the event day (days -28 to -1) | Needs all 28 days; the median resists one earlier spike and the weekly cycle |
-| Lift | Views on a day divided by the baseline | Only when the baseline is at least 10 views a day. Below that, a handful of views gives absurd ratios (the prototype had lifts up to 234,024 on near-empty baselines); such pages report their views and excess views instead |
-| Excess views | Sum over days 0 to k of (views minus baseline) | Proposed k = 7 and 28 |
-| Peak day | The day with the most views from the event day on (the earliest on ties) | Reported as days since the event |
-| Half-life | Days from the peak until views first fall below half the peak | Right-censored when the series ends first (reported as "not yet") |
-| Breadth (countries) | Countries with a published row for the page on the event day (any language) | A lower bound; see the limits |
-| Breadth (languages) | Language editions whose lift on day 0 or 1 is at least 2 | Only languages where the article exists |
+| Baseline | Median daily views over days -28 to -1 | All 28 days needed (four full weeks, so weekdays balance). The series start 28 days before 2023-02-06, so every version 1 event has a full baseline window |
+| Lift | Views on a day divided by the baseline | Only when the baseline is at least 10 views a day (the floor); below it a handful of views gives absurd ratios (the prototype had lifts up to 234,024) |
+| Excess views | Sum over days 0 to 7, and 0 to 28, of (views minus baseline) | Empty when the data end before day 7 or day 28 |
+| Peak day | The day from 0 to 28 with the most views (the earliest on ties) | Days since the event |
+| Half-life | Days from the peak until views first fall below half the peak | Censored (empty, with `half_life_censored`) when that has not happened by day 28 or by the last day with data |
+| Breadth (countries) | Countries with a published row for the item on day 0, in any language | A lower bound, see the limits |
+| Breadth (languages) | Language editions (of those fetched) with a lift of 2 or more on day 0 or day 1 | Only languages where the article exists and has a baseline of 10 or more |
+| `country_status` | See below | Never treats a missing row as zero |
+
+**`country_status`**, for each event, item, language and country that has at least one
+published row from day -28 to day 1:
+
+| Status | Rule |
+|---|---|
+| `tracked` | A published row on at least 21 of the 28 baseline days. The lift on day 0 uses the median of the published baseline days only, and the number of those days is reported |
+| `appeared` | Published on day 0 or day 1, and on at most 2 of the 28 baseline days |
+| `not_published` | No row on day 0 or day 1 (and not tracked) |
+| `unclear` | Everything else (published on day 0 or 1 and on 3 to 20 baseline days) |
+| `insufficient_files` | Fewer than 21 of the baseline days, or neither day 0 nor day 1, have a country file at all, so the status cannot be decided |
+
+`appeared` means that the country's count **rose above the publication threshold**, not that it
+started from nothing: below the threshold the count is unknown, not zero. A `tracked` country
+without a row on day 0 has no lift. Rows are never filled in, and the noise is never removed.
+`insufficient_files` covers Wikimedia's own missing days (an empty file, the start of the data);
+it was added to the accepted four statuses so that a missing *file* is not read as a missing
+*row*. Each row also counts its `older_method_days`: days in the window whose rows came from
+Wikimedia's older method (United States rows until 2023-09-19, and seven rebuilt days in 2023).
 
 **Limits under noise and thresholds (country measures).**
 - Each country count has Gaussian noise added. For lower-risk countries 95% of counts are
@@ -44,9 +66,9 @@ All measures are computed per event, page and language (or country), from the ev
   177 and 353 views (Wikimedia's README).
 - A row is published only above 90 views (lower risk), 550 (medium) or 1,000 (higher), and only
   for pages with more than 150 views worldwide that day. Countries classed "not published" never
-  appear. **A missing row means "below the threshold or not published", never zero.** So a
-  country baseline cannot be computed for most pages, and country lift is not defined in the
-  first release; country measures are breadth and the event-day counts.
+  appear. **A missing row means "below the threshold or not published", never zero.**
+- Some rows come from Wikimedia's older method (threshold 450, Laplace noise): all United
+  States rows from 2023-02-06 to 2023-09-19 and every row on the seven rebuilt days of 2023.
 - Only the first 10 page views per browser and day are counted, so country counts are lower
   than the Analytics API's totals and the two must not be added or compared directly.
 - Breadth depends on country size and on how much each country reads Wikipedia: a large country
@@ -55,8 +77,9 @@ All measures are computed per event, page and language (or country), from the ev
 
 **Limits of the language measures.**
 - The Analytics API counts views of a page under its title; views of redirects to it are not
-  included, and a page moved during the window splits its series. Titles are resolved on the
-  day the event is read.
+  included. For English pages that moved inside the span, the old titles are fetched too and
+  the series are joined at the move dates (the day of a move adds both titles); joined series
+  are flagged. Moves in other language editions are not followed yet.
 - A page created on or just before the event day has no baseline; its lift is undefined and
   its views are the signal (this is also what marks it as the event's own article).
 - An earlier event about the same page inside the 28-day window raises the baseline; the
