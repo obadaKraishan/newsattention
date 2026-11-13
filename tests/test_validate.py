@@ -136,6 +136,7 @@ def test_parquet_files_checked_by_folder_name(tmp_path, capsys):
         "source": ["api"] * 3,
         "noisy": [False] * 3,
         "joined": [False] * 3,
+        "page_id": [None] * 3,
     }
     pq.write_table(pa.table(rows), folder / "2025-01.parquet")
     report = validate_file(folder / "2025-01.parquet")

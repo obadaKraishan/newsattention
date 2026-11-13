@@ -156,12 +156,20 @@ def make_store(tmp_path) -> Store:
                 ("views", 300),
             ):
                 cols[name].append(value)
+            # A second page of the same item on the same day: the larger count is kept.
+            for name, value in (
+                ("date", day),
+                ("qid", "Q1"),
+                ("project", "en.wikipedia"),
+                ("page_id", 101),
+                ("country", "FL"),
+                ("views", 120),
+            ):
+                cols[name].append(value)
         path = store.dp_rows(day)
         path.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(pa.table(cols, schema=backfill.DP_SCHEMA), path)
-        backfill.append_jsonl(
-            store.root / "dp" / "filter_stats.jsonl", [{"day": day.isoformat(), "rows_in_file": 10}]
-        )
+        backfill.append_jsonl(store.coverage, [{"day": day.isoformat(), "status": "on_disk"}])
     return store
 
 
@@ -172,7 +180,7 @@ def test_build_everything_on_a_tiny_store(tmp_path):
     assert tables.build_pages(store, out, START, LAST) == {"pages": 2, "moved": 1}
     pages = pq.read_table(out / "pages.parquet").to_pylist()
     assert pages[1]["old_titles"] == ["Made-up Cup (2025)"]
-    assert tables.build_views_dp(store, out, say=lambda m: None)["views_dp"] == 34
+    assert tables.build_views_dp(store, out, say=lambda m: None)["views_dp"] == 35
     bank = tables.SeriesBank(START, LAST)
     n = bank.n
     arr = np.full(n, 50, dtype=np.int64)
@@ -191,6 +199,9 @@ def test_build_everything_on_a_tiny_store(tmp_path):
         for r in pq.read_table(out / "country_status" / "2025-02.parquet").to_pylist()
     }
     assert status["FL"]["country_status"] == "tracked" and status["FL"]["lift_day0"] == 4.0
+    assert (
+        status["FL"]["baseline_file_days"] == 28 and status["FL"]["baseline_published_days"] == 28
+    )
     assert status["OL"]["country_status"] == "appeared"
     for path in sorted(out.rglob("*.parquet")):
         report = validate_file(path)
@@ -202,3 +213,19 @@ def test_older_method_days():
     assert not tables.older_method("US", date(2023, 10, 1))
     assert tables.older_method("FR", date(2023, 11, 13))
     assert not tables.older_method("FR", date(2023, 11, 14))
+
+
+def test_older_method_pairs_need_the_data_to_agree(tmp_path):
+    store = Store(tmp_path / "store", tmp_path / "raw")
+    backfill.append_jsonl(
+        store.root / "dp" / "filter_stats.jsonl",
+        [
+            {"day": "2023-05-01", "countries_min_450_or_more": ["US", "TV"]},
+            {"day": "2023-05-02", "countries_min_450_or_more": []},
+            {"day": "2023-11-13", "countries_min_450_or_more": ["FR"]},
+        ],
+    )
+    assert tables.older_method_pairs(store) == {
+        (date(2023, 5, 1), "US"),
+        (date(2023, 11, 13), "FR"),
+    }

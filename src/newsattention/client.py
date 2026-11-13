@@ -191,6 +191,7 @@ class WikimediaClient:
         self.min_interval = min_interval
         self.monotonic = monotonic
         self._last_start: float | None = None
+        self.last_when = ""
         self.blocked: dict[str, int] = {}
 
     def _headers(self, encoding: str = "gzip") -> dict[str, str]:
@@ -225,6 +226,7 @@ class WikimediaClient:
             self.budget.check_call(family)
             self._pace()
             when = self.clock()
+            self.last_when = when
             try:
                 resp = self.session.request(
                     method,
@@ -326,8 +328,8 @@ class WikimediaClient:
         if expected_size is not None:
             self.budget.check_bytes(expected_size)
         family = family_of(urlsplit(url).netloc, urlsplit(url).path)
-        when = self.clock()
         resp = self._send("GET", url, None, stream=True)
+        when = self.last_when  # the time the request was sent, after the pacing wait
         if resp.status_code != 200:
             self.log.append("GET", url, resp.status_code, 0, when)
             self.budget.record(family, 0)

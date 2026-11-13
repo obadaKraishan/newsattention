@@ -81,7 +81,12 @@ def write_views_csv(path: Path, rows: Iterable[Views]) -> int:
 
 def read_views_csv(path: Path) -> list[Views]:
     with path.open(newline="", encoding="utf-8") as fh:
-        return [Views.model_validate(row) for row in csv.DictReader(fh)]
+        return [
+            Views.model_validate(
+                {k: (None if k == "page_id" and v == "" else v) for k, v in row.items()}
+            )
+            for row in csv.DictReader(fh)
+        ]
 
 
 def dedupe_links(pages: list[EventPage]) -> list[EventPage]:

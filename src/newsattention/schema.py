@@ -235,6 +235,11 @@ class Views(_Frozen):
         default=False,
         description="True for a moved page's series joined across its titles (api only)",
     )
+    page_id: int | None = Field(
+        default=None,
+        gt=0,
+        description="The page id of the published row (dp); one item can have two pages",
+    )
 
     @field_validator("qid")
     @classmethod
@@ -470,7 +475,7 @@ TABLES: dict[str, type[_Frozen]] = {
 KEYS: dict[str, tuple[str, ...]] = {
     "events": ("event_id",),
     "event_pages": ("event_id", "link_order"),
-    "views": ("date", "qid", "project", "country", "source"),
+    "views": ("date", "qid", "project", "page_id", "country", "source"),
     "attention": ("event_id", "qid", "project", "country", "date", "source"),
     "attention_summary": ("event_id", "qid", "project"),
     "country_status": ("event_id", "qid", "project", "country"),

@@ -346,6 +346,7 @@ def test_dp_filter_and_totals(store):
     table = pq.read_table(store.dp_rows(date(2025, 1, 1)))
     assert table.column("project").to_pylist() == ["en.wikipedia", "de.wikipedia", "en.wikipedia"]
     stats = backfill.read_jsonl(store.root / "dp" / "filter_stats.jsonl")[0]
+    assert stats["rows_in_file"] == 5 and stats["kept"] == 3
     assert stats["us_rows"] is True and stats["us_min_count"] == 470
     assert stats["countries_min_450_or_more"] == ["OL", "US"]
     assert stats["countries_min_below_450"] == 1

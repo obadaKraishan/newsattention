@@ -173,6 +173,7 @@ VIEWS_SCHEMA = pa.schema(
         ("source", pa.string()),
         ("noisy", pa.bool_()),
         ("joined", pa.bool_()),
+        ("page_id", pa.int64()),
     ]
 )
 
@@ -195,6 +196,7 @@ def build_views_dp(store: Store, out: Path, say: Say = print) -> dict[str, int]:
                 "source": pa.array(["dp"] * n),
                 "noisy": pa.array([True] * n),
                 "joined": pa.array([False] * n),
+                "page_id": table["page_id"],
             },
             schema=VIEWS_SCHEMA,
         )
@@ -292,6 +294,7 @@ def write_views_api(bank: SeriesBank, out: Path, say: Say = print) -> dict[str, 
             cols["source"].extend(["api"] * len(nz))
             cols["noisy"].extend([False] * len(nz))
             cols["joined"].extend([key in bank.joined] * len(nz))
+            cols["page_id"].extend([None] * len(nz))
         pq.write_table(
             pa.table(cols, schema=VIEWS_SCHEMA), folder / f"{month}.parquet", compression="zstd"
         )
@@ -413,19 +416,34 @@ COUNTRY_SCHEMA = pa.schema(
 
 
 def older_method(country: str, day: date) -> bool:
-    """Rows from Wikimedia's older (historical) method: US until 2023-09-19, the rebuilt days."""
+    """Wikimedia documents older-method rows here: US until 2023-09-19, and the rebuilt days."""
     if day in backfill.DP_REBUILT_DAYS:
         return True
     return country == "US" and backfill.DP_US_MISSING[0] <= day <= backfill.DP_US_MISSING[1]
 
 
-def file_days(store: Store) -> frozenset[date]:
-    """Days that have a country file with rows."""
-    out = set()
+def older_method_pairs(store: Store) -> set[tuple[date, str]]:
+    """(day, country) pairs whose rows came from the older method, as the files show it.
+
+    A pair counts when Wikimedia documents the older method there (:func:`older_method`)
+    and that day's smallest count for the country is 450 or more (the older threshold). In
+    the files, US rows inside the documented period start near 90 on some days.
+    """
+    out: set[tuple[date, str]] = set()
     for row in backfill.read_jsonl(store.root / "dp" / "filter_stats.jsonl"):
-        if row["rows_in_file"]:
-            out.add(date.fromisoformat(row["day"]))
-    return frozenset(out)
+        day = date.fromisoformat(row["day"])
+        for country in row.get("countries_min_450_or_more", []):
+            if older_method(country, day):
+                out.add((day, country))
+    return out
+
+
+def file_days(store: Store) -> frozenset[date]:
+    """Days that have a country file on disk (from the download record; the last entry wins)."""
+    status: dict[str, str] = {}
+    for row in backfill.read_jsonl(store.coverage):
+        status[row["day"]] = row["status"]
+    return frozenset(date.fromisoformat(d) for d, s in status.items() if s == "on_disk")
 
 
 def load_dp_window(store: Store, first: date, last: date, qids: set[str]) -> pa.Table | None:
@@ -461,6 +479,7 @@ def build_attention(
     for qid, project in sorted(bank.series):
         projects[qid].append(project)
     have_files = file_days(store)
+    older = older_method_pairs(store)
     by_month: dict[str, list[tuple[str, date, str]]] = defaultdict(list)
     for link in links:
         by_month[link[1].strftime("%Y-%m")].append(link)
@@ -492,12 +511,15 @@ def build_attention(
                 for r in range(a, b):
                     day = col_date[r]
                     if lo <= day <= hi:
-                        groups[(col_project[r], col_country[r])][day] = int(col_views[r])
+                        # Two pages of one item: keep the larger published count (the main
+                        # page), never a sum and never an estimate.
+                        g = groups[(col_project[r], col_country[r])]
+                        g[day] = max(g.get(day, 0), int(col_views[r]))
                         if day == d:
                             countries_day0.add(col_country[r])
                 for (project, country), published in sorted(groups.items()):
                     st = measures.country_status(published, d, have_files)
-                    older = sum(1 for day in published if older_method(country, day))
+                    n_older = sum(1 for day in published if (day, country) in older)
                     for name, value in (
                         ("event_id", eid),
                         ("event_date", d),
@@ -511,7 +533,7 @@ def build_attention(
                         ("views_day0", st.views_day0),
                         ("views_day1", st.views_day1),
                         ("lift_day0", st.lift_day0),
-                        ("older_method_days", older),
+                        ("older_method_days", n_older),
                     ):
                         ctry[name].append(value)
             # languages

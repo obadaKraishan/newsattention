@@ -721,6 +721,7 @@ def dp_filter(
         cols: dict[str, list[Any]] = {name: [] for name in DP_SCHEMA.names}
         country_min: dict[str, int] = {}
         for row in dpviews._iter_rows(src, None, None, tally):
+            tally["read"] += 1
             if row.views < country_min.get(row.country, 1 << 30):
                 country_min[row.country] = row.views
             if row.item_id not in qids or not row.project.endswith(".wikipedia"):
