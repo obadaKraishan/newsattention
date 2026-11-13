@@ -1,0 +1,12 @@
+NewsAttention
+Copyright 2026 Obada Kraishan
+
+The NewsAttention software (everything under src/ and tests/) is licensed under the Apache
+License, Version 2.0 (see LICENSE).
+
+No Wikipedia text or page-view data is in this repository. docs/licenses.md describes the
+licenses of the sources (Wikipedia's Current Events Portal, the Wikimedia Analytics API, the
+Wikimedia differentially private page-view files and Wikidata) and how each is credited.
+
+Wikipedia and Wikimedia are trademarks of the Wikimedia Foundation. NewsAttention is an
+independent project and is not endorsed by or affiliated with the Wikimedia Foundation.

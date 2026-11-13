@@ -1,0 +1,23 @@
+# DRAFT: nothing has been released yet. The version, date and DOI are filled in at release.
+cff-version: 1.2.0
+message: "If you use NewsAttention, please cite it as below."
+type: software
+title: "NewsAttention: daily news events linked to how many people read about them on Wikipedia"
+abstract: >-
+  NewsAttention links the dated news events listed on Wikipedia's Current Events Portal to
+  daily page views of the articles they link to, by language edition (Wikimedia Analytics API)
+  and by country (Wikimedia's differentially private page-view files), with derived measures
+  of attention: baseline, lift, peak day, half-life and breadth.
+authors:
+  - family-names: Kraishan
+    given-names: Obada
+    affiliation: "College of Media and Communication, Texas Tech University"
+license: Apache-2.0
+repository-code: "https://github.com/obadaKraishan/newsattention"
+keywords:
+  - public attention
+  - news events
+  - Wikipedia page views
+  - communication research
+  - journalism
+  - dataset
