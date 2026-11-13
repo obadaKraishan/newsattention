@@ -7,6 +7,28 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Backfill commands, each resumable: `portal-backfill` and `reread` (each day read again 7
+  and 30 days after it ends; a changed revision replaces the day's events and every read
+  stays on record), `reparse` and `parse-report` (what the parser could not read, by month),
+  `links`, `pages` (creation dates estimated from page ids, checked on a random sample, and the
+  English move log), `dp-download` and `dp-filter` (the country files, with the documented
+  gaps and each day's smallest count per country recorded), `plan` (append-only) and
+  `api-backfill` (raw chunks of 250 calls).
+- `tables`: events, event_pages, pages, views_dp, views_api (moved English pages joined across
+  their titles and flagged), attention, attention_summary and country_status, as Parquet files
+  by month; `validate` checks Parquet files and folders.
+- The accepted measures: baseline, lift with a floor of 10 views, excess views over days 0 to
+  7 and 0 to 28, peak day, half-life (censored), breadth, and `country_status` (tracked,
+  appeared, not_published, unclear, insufficient_files).
+- `daily`: yesterday's portal page, due re-reads, new links, the move log, the new country file
+  (missing files retried for a week), and language views for new items and for 7- and 28-day
+  follow-ups, one summary line per step.
+- Story links carry their heading level; heading variants map to the ten standard headings;
+  currency, unit, ship, magnitude and formula templates are rendered.
+- The client retries timeouts and dropped connections, caps groups of hosts together (every
+  `/w/api.php` request), counts only file downloads against the byte cap, and logs times in
+  milliseconds.
+- New dependencies: pyarrow (Parquet tables) and numpy (series arithmetic).
 - Project skeleton: Apache-2.0 license, README, citation draft, CI on Python 3.10 to 3.13 with
   SHA-pinned actions, and Dependabot for the actions.
 - `newsattention.client`: a sequential client for Wikimedia hosts. Every request carries the
