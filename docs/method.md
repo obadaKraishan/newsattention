@@ -113,7 +113,7 @@ no such article, and was right about 24 of the 30 events. Its errors point to th
   (the Analytics API counts views by title). Page moves need to be detected (the page's
   creation date or move log, or its Wikidata id, which is far older than a new item's).
 - **New pages about people or companies** created because of the event are new but are not
-  the event. Wikidata's "instance of" (P31) can tell an event (an election, a strike, an
+  the event. Wikidata's "instance of" property can tell an event (an election, a strike, an
   attack) from a person or a company.
 - **Own articles without a year in the title** (named incidents) are missed.
 
