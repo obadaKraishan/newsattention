@@ -46,11 +46,11 @@ file against them.
   daily differentially private file by country, project and page, filtered to the linked items.
 - **Measures:** see the [method](method.md).
 - **Provenance:** every row is computed by code from the sources; no row is written or edited
-  by hand, and no language model is used (to fill if S3 adds one: model name and license).
+  by hand, and no language model is used (to fill if one is added: model name and license).
 
 ## Size (to fill at release)
-Events per day, links per event, rows per table, bytes per month. The prototype numbers are in
-the S1 notes: about 17 events a day and 6.4 links per event over 28 days.
+Events per day, links per event, rows per table, bytes per month. A 28-day prototype
+(2026-10-16 to 2026-11-12) had about 17 events a day and 6.4 links per event.
 
 ## Bias, risks and limits
 - Page views are reading on Wikipedia, not all public attention; Wikipedia's reach differs by
@@ -61,7 +61,7 @@ the S1 notes: about 17 events a day and 6.4 links per event over 28 days.
 - The portal's events are an editorial selection by volunteers and lean toward
   English-language news.
 - Most links point to general pages (a country, a party); which page is the event's own
-  article is decided by a rule (S3), with a known error rate (to fill).
+  article is decided by a rule, with a known error rate (to fill).
 - Known gaps in the country files: no United States rows from 2023-02-06 to 2023-09-19; seven
   days in 2023 rebuilt with the older method; countries of medium and higher risk only from
   2024-02-15; an empty file for 2026-11-08 (as of 2026-11-13).

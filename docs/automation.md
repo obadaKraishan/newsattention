@@ -24,13 +24,13 @@ One workflow on a schedule, one job, strictly sequential requests through the pr
    the rows of every item linked by an event in the last 60 days. The file is read once and not
    kept by the job; its size and checksum go into the run's manifest.
 4. **Language views.** For each item linked in the last 60 days, the views for D-1 in English
-   and in its top five other languages. Two ways, to be chosen in S2:
+   and in its top five other languages. Two ways, to be chosen with the backfill:
    - **Per-article API calls**, spaced to keep the call count low: one call when an item is
      first linked (its 28-day baseline and the days since), then one call per item at +7 and
      +28 days that covers the whole range. At about 17 events and 110 new links a day, that is
      roughly 110 × 6 languages × 3 calls ≈ 2,000 calls a day, sequential (about 15 minutes).
    - **The daily page-view dump** (`pageview_complete`, all articles in all languages): one
-     download a day instead of thousands of calls. Its size decides this (S2 measures it).
+     download a day instead of thousands of calls. Its size decides this (to be measured).
 5. **Measures.** Recompute the attention rows of every event in the last 60 days (baseline,
    lift, peak, half-life, breadth); older events are final.
 6. **Checks.** `newsattention validate` on every table, the row counts against the last run,
@@ -66,10 +66,10 @@ JSON manifest stored with the data, so a missed day is picked up on the next run
   `pull_request_target` triggers.
 
 ## Does it need a language model?
-Only for one question: which linked article is the event's own article (S3). The portal links
+Only for one question: which linked article is the event's own article. The portal links
 an event to many pages (6.4 on average in the prototype), most of them general pages such as a
 country or a political party. Rules may be enough (the article was created around the event,
-it is the nearest story heading, its views jump on the event day); S3 measures how far they
+it is the nearest story heading, its views jump on the event day); a hand-checked sample will show how far they
 get on a hand-checked sample.
 
 If rules fall short:
