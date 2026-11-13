@@ -5,6 +5,8 @@ Every request:
 - waits for the previous request to finish (the client is strictly sequential);
 - backs off on HTTP 429 and 5xx, honoring ``Retry-After``;
 - sends ``maxlag`` to the MediaWiki Action API and waits when the servers are lagged;
+- can keep a minimum interval between requests (the Analytics API answered HTTP 429 at about
+  200 requests a minute on 2026-11-13, so the command line spaces requests 0.35 s apart);
 - counts against a per-source call cap and a byte cap;
 - adds one line to the usage log: time, method, host, path, status and bytes.
 
@@ -152,6 +154,8 @@ class WikimediaClient:
         max_retries: int = 5,
         base_delay: float = 2.0,
         timeout: float = 60.0,
+        min_interval: float = 0.0,
+        monotonic: Callable[[], float] = time.monotonic,
         clock: Callable[[], str] = now_utc,
     ) -> None:
         self.log = log
@@ -162,6 +166,9 @@ class WikimediaClient:
         self.base_delay = base_delay
         self.timeout = timeout
         self.clock = clock
+        self.min_interval = min_interval
+        self.monotonic = monotonic
+        self._last_start: float | None = None
         self.blocked: dict[str, int] = {}
 
     def _headers(self, encoding: str = "gzip") -> dict[str, str]:
@@ -194,6 +201,7 @@ class WikimediaClient:
         last = None
         for attempt in range(self.max_retries + 1):
             self.budget.check_call(family)
+            self._pace()
             when = self.clock()
             resp = self.session.request(
                 method,
@@ -233,6 +241,16 @@ class WikimediaClient:
             return resp
         status = last.status_code if last is not None else 0
         raise SourceBlocked(host, status, f"{host} kept failing (HTTP {status}) after retries.")
+
+    def _pace(self) -> None:
+        """Keep at least ``min_interval`` seconds between the starts of two requests."""
+        now = self.monotonic()
+        if self.min_interval and self._last_start is not None:
+            wait = self._last_start + self.min_interval - now
+            if wait > 0:
+                self.sleep(wait)
+                now += wait
+        self._last_start = now
 
     def get(self, url: str, params: dict[str, Any] | None = None) -> Any:
         return self._send("GET", url, params, stream=False)

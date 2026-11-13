@@ -13,13 +13,16 @@ from newsattention.client import DEFAULT_CAPS, Budget, UsageLog, WikimediaClient
 from newsattention.validate import validate_file
 
 DEFAULT_LOG = Path("data/usage_log.csv")
+#: Seconds between the starts of two requests: about 170 a minute, under the rate at which the
+#: Analytics API began answering HTTP 429 (about 200 a minute, 2026-11-13).
+MIN_INTERVAL = 0.35
 
 
 def _client(log: Path, since: str | None, max_bytes: int) -> WikimediaClient:
     usage = UsageLog(log)
     start = since or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     budget = Budget.from_log(usage.rows(), start, dict(DEFAULT_CAPS), max_bytes)
-    return WikimediaClient(usage, budget)
+    return WikimediaClient(usage, budget, min_interval=MIN_INTERVAL)
 
 
 def cmd_validate(args: argparse.Namespace) -> int:

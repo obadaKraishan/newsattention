@@ -250,3 +250,12 @@ def test_stream_retry_is_logged(make_client, tmp_path):
     client, _ = make_client(lambda m, u, p, h: answers.pop(0))
     client.download("https://analytics.wikimedia.org/f.tsv", tmp_path / "f")
     assert [r["status"] for r in client.log.rows()] == ["503", "200"]
+
+
+def test_min_interval_spaces_requests(make_client):
+    ticks = iter([0.0, 0.1, 5.0])
+    client, _ = make_client(ok(), min_interval=0.35, monotonic=lambda: next(ticks))
+    client.get(REST)
+    client.get(REST)
+    client.get(REST)
+    assert client.sleeps == [pytest.approx(0.25)]
