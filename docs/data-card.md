@@ -40,7 +40,7 @@ file against them.
 ## Creation
 - **Events:** each portal day page is read as wikitext through the MediaWiki API, with its
   revision id, and parsed into headings, events, story headings, links and cited news domains.
-  Each day is read again seven days later and the re-read replaces the first read.
+  Each day is read again after 7 and after 30 days; each re-read replaces the earlier one.
 - **Links:** titles are resolved after redirects to page ids and Wikidata ids.
 - **Views:** Analytics API per-article daily views (`all-access`, human `user` agent); the
   daily differentially private file by country, project and page, filtered to the linked items.

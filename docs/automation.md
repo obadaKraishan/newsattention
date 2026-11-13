@@ -14,8 +14,8 @@ and processes **D-1**, with a retry at 12:00 UTC if a file is late.
 One workflow on a schedule, one job, strictly sequential requests through the project's client
 (the same User-Agent, backoff, `maxlag` and request log as in development).
 
-1. **Events.** Read the portal pages for D-1 (first read) and D-8 (the re-read after seven
-   days, which replaces the first read). Each read stores the revision id; events whose text or
+1. **Events.** Read the portal pages for D-1 (first read), D-8 and D-31 (the re-reads after
+   7 and 30 days, each replacing the earlier read). Each read stores the revision id; events whose text or
    links changed between the two reads keep their id when their first source is unchanged
    (see the method's event ids).
 2. **Links.** Resolve the new and changed links to canonical titles, page ids and Wikidata ids

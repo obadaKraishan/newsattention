@@ -134,7 +134,10 @@ only if rules fall short.
 - **Late edits.** Editors keep adding and rewording events for days after a date: when the
   prototype read the pages on 2026-11-13, the pages for 2026-11-11 and 2026-11-12 had been
   edited that same day, and the page for 2026-11-12 held 14 events against a median of 17.5.
-  Each day is therefore read again seven days later, and the re-read replaces the first read.
+  Edits also come much later: of the 21 day pages that were at least seven days old, 12 had
+  been edited seven or more days after their day ended (the latest 23 days after; the edits may
+  be small). Each day is therefore read again after 7 days and after 30 days; each re-read
+  replaces the earlier one, and the number of events added, removed or changed is logged.
   An event keeps its id across edits when its first cited source is unchanged; ids that change
   are logged.
 - **Different counting rules.** Country counts (first 10 views per browser per day, human
