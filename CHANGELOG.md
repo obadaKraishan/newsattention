@@ -32,7 +32,10 @@ All notable changes to this project are documented here. The format follows
 - `newsattention.measures`: baseline (median of the 28 days before), lift, peak day, half-life
   and breadth.
 - `newsattention sample`: builds a small linked sample step by step; each step is skipped on a
-  re-run, so no request is spent twice. `newsattention sizes` reports the size of a full
+  re-run, so no request is spent twice; an event keeps one row per article when two of its
+  links reach the same article through a redirect. `newsattention sizes` reports the size of a full
   backfill of the differentially private files from their directory listings.
+- The client keeps a minimum interval between requests (0.35 s from the command line), under
+  the Analytics API's limit of 200 requests a minute for clients identified by User-Agent.
 - Documentation: prior art, sources, licenses, method (draft), automation (design), data card
-  (skeleton) and ethics.
+  (skeleton) and ethics. The method re-reads each portal day after 7 and after 30 days.

@@ -100,9 +100,9 @@ not perfectly.
 Most links point to general pages. A first rule marks a linked page as the event's own article
 when **it is new** (at least 14 of the 28 baseline days have zero views) **or its title holds a
 year and its views on the event day or the day after are at least five times its baseline**.
-In the prototype the rule flags 242 of 3,113 English links (7.8%), so about 92% of links are
+In the prototype the rule flags 241 of 3,107 English links (7.8%), so about 92% of links are
 general pages, and 174 of 487 events (36%) have at least one flagged link. A reading check of
-30 random events found that 9 of them link an article about the event itself (9 of their 184
+30 random events found that 9 of them link an article about the event itself (9 of their 183
 links, 4.9%). The rule found the right page in 7 of those 9 events, flagged 4 events that have
 no such article, and was right about 24 of the 30 events. Its errors point to the next rule:
 

@@ -84,6 +84,25 @@ def read_views_csv(path: Path) -> list[Views]:
         return [Views.model_validate(row) for row in csv.DictReader(fh)]
 
 
+def dedupe_links(pages: list[EventPage]) -> list[EventPage]:
+    """One row per event and article: two links can reach the same article through a redirect.
+
+    The first link is kept (a link in the event's text comes before story links), and the
+    link order is renumbered without gaps.
+    """
+    out: list[EventPage] = []
+    seen: set[tuple[str, str]] = set()
+    order: dict[str, int] = defaultdict(int)
+    for page in sorted(pages, key=lambda p: (p.event_id, p.link_order)):
+        key = (page.event_id, str(page.page_id) if page.page_id else page.page_title)
+        if key in seen:
+            continue
+        seen.add(key)
+        order[page.event_id] += 1
+        out.append(page.model_copy(update={"link_order": order[page.event_id]}))
+    return out
+
+
 class Sample:
     """One sample run: an output folder, a raw folder and a client."""
 
@@ -150,22 +169,26 @@ class Sample:
         path = self.out / "event_pages.jsonl"
         if path.exists():
             return [EventPage.model_validate(r) for r in read_jsonl(path)]
-        resolved = wikidata.resolve_titles(self.client, (link["title"] for link in links), EN)
-        write_jsonl(self.out / "resolved.jsonl", (asdict(r) for r in resolved.values()))
-        pages = []
-        for link in links:
-            res = resolved[link["title"]]
-            pages.append(
+        cache = self.out / "resolved.jsonl"
+        if cache.exists():
+            resolved = {r["linked_title"]: wikidata.Resolved(**r) for r in read_jsonl(cache)}
+        else:
+            resolved = wikidata.resolve_titles(self.client, (link["title"] for link in links), EN)
+            write_jsonl(cache, (asdict(r) for r in resolved.values()))
+        pages = dedupe_links(
+            [
                 EventPage(
                     event_id=link["event_id"],
-                    qid=res.qid,
+                    qid=resolved[link["title"]].qid,
                     project=EN,
-                    page_id=res.page_id,
-                    page_title=res.title,
+                    page_id=resolved[link["title"]].page_id,
+                    page_title=resolved[link["title"]].title,
                     link_order=link["link_order"],
                     in_text=link["in_text"],
                 )
-            )
+                for link in links
+            ]
+        )
         write_jsonl(path, pages)
         self.say(f"resolve: {len(resolved)} titles, {len(pages)} event pages")
         return pages

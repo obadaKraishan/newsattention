@@ -231,3 +231,32 @@ def test_real_client_factory_reads_the_log(tmp_path):
     client = cli._client(log, "2030-12-31T00:00:00Z", 1000)
     assert client.budget.used == {"analytics": 1}
     assert client.budget.max_bytes == 1000
+
+
+def test_dedupe_links_keeps_the_first_link_to_an_article():
+    from newsattention.pipeline import dedupe_links
+    from newsattention.schema import EventPage
+
+    def page(order, page_id, title, in_text):
+        return EventPage(
+            event_id="2025-03-02-0a1b2c3d",
+            qid=f"Q{page_id}",
+            project=EN,
+            page_id=page_id,
+            page_title=title,
+            link_order=order,
+            in_text=in_text,
+        )
+
+    pages = [
+        page(1, 7, "Fakeland", True),
+        page(2, 9, "Storm season", True),
+        page(3, 9, "Storm season", False),
+        page(4, 8, "Otherland", False),
+    ]
+    out = dedupe_links(pages)
+    assert [(p.page_id, p.link_order, p.in_text) for p in out] == [
+        (7, 1, True),
+        (9, 2, True),
+        (8, 3, False),
+    ]
