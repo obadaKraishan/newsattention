@@ -267,3 +267,11 @@ def test_attention_country_rules_and_ids():
         attention(project="x")
     with pytest.raises(ValidationError):
         attention(baseline=-1.0)
+
+
+def test_event_page_story_level_only_for_story_links():
+    assert page(in_text=False, story_level=2).story_level == 2
+    with pytest.raises(ValidationError, match="no story_level"):
+        page(in_text=True, story_level=1)
+    with pytest.raises(ValidationError):
+        page(in_text=False, story_level=0)

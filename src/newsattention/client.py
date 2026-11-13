@@ -7,7 +7,7 @@ Every request:
 - sends ``maxlag`` to the MediaWiki Action API and waits when the servers are lagged;
 - can keep a minimum interval between requests (the Analytics API answered HTTP 429 at about
   200 requests a minute on 2026-11-13, so the command line spaces requests 0.35 s apart);
-- counts against a per-source call cap and a byte cap;
+- counts against a per-source call cap and, for file downloads, a byte cap;
 - adds one line to the usage log: time, method, host, path, status and bytes.
 
 An HTTP 403 means the source has blocked us. The client raises :class:`SourceBlocked` and the
@@ -70,7 +70,8 @@ def family_of(host: str, path: str) -> str:
 
 
 def now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """UTC time with milliseconds, so the gaps between requests can be measured."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 class UsageLog:
@@ -96,14 +97,25 @@ class UsageLog:
             return list(csv.DictReader(fh))
 
 
+#: Families whose bytes count against the byte cap: file downloads only. API answers are
+#: capped by their call counts instead.
+BYTE_FAMILIES = frozenset({"files"})
+
+
 @dataclass
 class Budget:
-    """Call caps per source family and a total byte cap, shared by one session."""
+    """Call caps per source family (and per group of families) and a download byte cap.
+
+    ``group_caps`` maps a name to the families it covers and their combined cap, for example
+    ``{"mediawiki": (("action", "wikidata"), 10_000)}``: every ``/w/api.php`` request, on
+    Wikipedia or on Wikidata, counts against the same 10,000.
+    """
 
     caps: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_CAPS))
     max_bytes: int = DEFAULT_MAX_BYTES
     used: dict[str, int] = field(default_factory=dict)
     bytes_used: int = 0
+    group_caps: dict[str, tuple[tuple[str, ...], int]] = field(default_factory=dict)
 
     @classmethod
     def from_log(
@@ -112,23 +124,32 @@ class Budget:
         since: str,
         caps: dict[str, int] | None = None,
         max_bytes: int = DEFAULT_MAX_BYTES,
+        group_caps: dict[str, tuple[tuple[str, ...], int]] | None = None,
     ) -> Budget:
         """Start from the calls already logged since ``since`` (an ISO time in UTC)."""
-        budget = cls(caps=dict(caps or DEFAULT_CAPS), max_bytes=max_bytes)
+        budget = cls(
+            caps=dict(DEFAULT_CAPS if caps is None else caps),
+            max_bytes=max_bytes,
+            group_caps=dict(group_caps or {}),
+        )
         for row in rows:
             if row["time"] < since:
                 continue
-            fam = family_of(row["host"], row["path"])
-            budget.used[fam] = budget.used.get(fam, 0) + 1
-            budget.bytes_used += int(row["bytes"] or 0)
+            budget.record(family_of(row["host"], row["path"]), int(row["bytes"] or 0))
         return budget
 
     def check_call(self, family: str) -> None:
         cap = self.caps.get(family)
         if cap is not None and self.used.get(family, 0) >= cap:
             raise CallCapReached(
-                f"The {family} call cap ({cap}) is reached. Stop here, or ask for a higher cap."
+                f"The {family} call cap ({cap:,}) is reached. Stop here, or ask for a higher cap."
             )
+        for name, (families, group_cap) in self.group_caps.items():
+            if family in families and sum(self.used.get(f, 0) for f in families) >= group_cap:
+                raise CallCapReached(
+                    f"The {name} call cap ({group_cap:,}, for {', '.join(families)}) is reached. "
+                    "Stop here, or ask for a higher cap."
+                )
 
     def check_bytes(self, nbytes: int) -> None:
         if self.bytes_used + nbytes > self.max_bytes:
@@ -139,7 +160,8 @@ class Budget:
 
     def record(self, family: str, nbytes: int) -> None:
         self.used[family] = self.used.get(family, 0) + 1
-        self.bytes_used += nbytes
+        if family in BYTE_FAMILIES:
+            self.bytes_used += nbytes
 
 
 class WikimediaClient:
@@ -203,14 +225,26 @@ class WikimediaClient:
             self.budget.check_call(family)
             self._pace()
             when = self.clock()
-            resp = self.session.request(
-                method,
-                url,
-                params=params,
-                headers=self._headers(encoding),
-                timeout=self.timeout,
-                stream=stream,
-            )
+            try:
+                resp = self.session.request(
+                    method,
+                    url,
+                    params=params,
+                    headers=self._headers(encoding),
+                    timeout=self.timeout,
+                    stream=stream,
+                )
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                # A network failure or a timeout: logged with status 0, then backed off.
+                self.log.append(method, url, 0, 0, when)
+                self.budget.record(family, 0)
+                last = None
+                if attempt < self.max_retries:
+                    self.sleep(self.base_delay * (2**attempt))
+                    continue
+                raise SourceBlocked(
+                    host, 0, f"{host} kept failing (network) after retries."
+                ) from exc
             if not stream:
                 nbytes = len(resp.content or b"")
                 self.log.append(method, url, resp.status_code, nbytes, when)

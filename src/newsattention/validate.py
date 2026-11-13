@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from newsattention.schema import KEYS, LIST_FIELDS, TABLES
 
 #: Columns that are optional numbers or ids: an empty CSV cell means "no value".
-NULLABLE = {"qid", "page_id", "baseline", "lift"}
+NULLABLE = {"qid", "page_id", "baseline", "lift", "story_level"}
 
 
 @dataclass

@@ -168,6 +168,10 @@ def build_parser() -> argparse.ArgumentParser:
     siz = sub.add_parser("sizes", parents=[common], help="size of a full backfill of the DP files")
     siz.add_argument("--out", type=Path)
     siz.set_defaults(func=cmd_sizes)
+
+    from newsattention import commands
+
+    commands.register(sub)
     return parser
 
 

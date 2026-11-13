@@ -18,7 +18,7 @@ import hashlib
 import html
 import re
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from urllib.parse import urlsplit
 
@@ -97,6 +97,8 @@ class ParsedEvent:
     story_links: tuple[str, ...]
     source_urls: tuple[str, ...]
     source_domains: tuple[str, ...]
+    #: For each story link, how many headings up it sits (1 is the nearest heading).
+    story_levels: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,69 @@ class ParsedLink:
     title: str
     link_order: int
     in_text: bool
+    story_level: int | None = None
+
+
+#: Heading variants seen on day pages (typos, capitals, older names), lowercase, mapped to the
+#: standard heading. Headings not listed here and not standard are kept as written.
+CATEGORY_ALIASES = {
+    **{c.lower(): c for c in KNOWN_CATEGORIES},
+    "disasters and incidents": "Disasters and accidents",
+    "disaster and accidents": "Disasters and accidents",
+    "disssters and accidents": "Disasters and accidents",
+    "natural disasters": "Disasters and accidents",
+    "armed attacks and conflicts": "Armed conflicts and attacks",
+    "attacks and armed conflicts": "Armed conflicts and attacks",
+    "art and culture": "Arts and culture",
+    "business and econony": "Business and economy",
+}
+
+#: Currency templates: the symbol written before the amount.
+CURRENCY_TEMPLATES = {
+    "euro": "€", "gbp": "£", "usd": "US$", "us$": "US$", "jpy": "¥", "yen": "¥",
+    "indian rupee": "₹", "inr": "₹", "philippine peso": "₱", "bdt": "৳", "hkd": "HK$",
+}  # fmt: skip
+
+#: Ship-prefix templates ({{USS|Name|hull}} renders "USS Name").
+SHIP_PREFIX_TEMPLATES = {
+    "uss", "hms", "hmas", "hmcs", "hmnzs", "hdms", "ins", "mv", "ms", "rv", "ss", "usns",
+    "uscgc", "jds", "js", "ros", "rfs", "fs", "hnlms", "hnoms", "hswms", "tcg", "rss",
+}  # fmt: skip
+
+#: Templates rendered as their arguments on purpose (formatting wrappers).
+PASSTHROUGH_TEMPLATES = {
+    "nowrap", "nobr", "nobreak", "small", "smaller", "big", "larger", "em", "strong", "nobold",
+    "noitalic", "sic", "'", "-", "us$", "transl", "lang", "abbr", "w", "ill",
+    "interlanguage link", "ship", "warship", "sclass", "convert", "cvt",
+}  # fmt: skip
+
+
+@dataclass
+class ParseStats:
+    """What the parser met on one page, for the report of what it could not read.
+
+    ``layout`` is ``current`` (a ``{{Current events}}`` header), ``content`` (events inside the
+    template's ``content=`` parameter) or ``none``. ``unknown_templates`` counts templates that
+    fell to the default rendering (their positional arguments joined); ``stray_lines`` counts
+    non-empty lines that are neither bullets nor headings, by kind.
+    """
+
+    layout: str = "none"
+    bullets: int = 0
+    headings: int = 0
+    events: int = 0
+    story_headings: int = 0
+    uncategorized_events: int = 0
+    events_without_links: int = 0
+    events_without_sources: int = 0
+    empty_bullets: int = 0
+    mapped_headings: int = 0
+    other_headings: dict[str, int] = field(default_factory=dict)
+    unknown_templates: dict[str, int] = field(default_factory=dict)
+    stray_lines: dict[str, int] = field(default_factory=dict)
+
+    def bump(self, table: dict[str, int], key: str) -> None:
+        table[key] = table.get(key, 0) + 1
 
 
 def normalize_title(target: str) -> str | None:
@@ -148,12 +213,32 @@ def domain_of(url: str) -> str | None:
     return host if DOMAIN_RE.match(host) else None
 
 
-def _render_template(body: str) -> str:
+def _render_template(body: str, stats: ParseStats | None = None) -> str:
     parts = [p.strip() for p in body.split("|")]
     name = parts[0].lower().replace("_", " ")
     args = [p for p in parts[1:] if "=" not in p]
     if name in DROP_TEMPLATES or name.startswith("flag"):
         return ""
+    if name in CURRENCY_TEMPLATES:
+        return CURRENCY_TEMPLATES[name] + (args[0] if args else "")
+    if name in SHIP_PREFIX_TEMPLATES:
+        return " ".join([name.upper(), *(a for a in args[:1] if a)])
+    if name == "m" and args:
+        return f"M{args[0]} {args[1]}" if len(args) > 1 else f"M{args[0]}"
+    if name in {"conv", "fxconvert"}:
+        return " ".join(args[:2])
+    if name in {"mpl", "mp", "chem"}:
+        return "".join(args)
+    if name == "rws":
+        return f"{args[0]} railway station" if args else ""
+    if name == "nbsp":
+        return " "
+    if name in {"snd", "spaced ndash", "spnd"}:
+        return " \u2013 "
+    if name in {"sub", "sup"}:
+        return args[0] if args else ""
+    if stats is not None and name not in PASSTHROUGH_TEMPLATES and not name.startswith("lang-"):
+        stats.bump(stats.unknown_templates, name)
     if name in {"ship", "warship", "sclass"}:
         return " ".join(a for a in args[:2] if a)
     if name in {"convert", "cvt"}:
@@ -165,12 +250,12 @@ def _render_template(body: str) -> str:
     return " ".join(a for a in args if a)
 
 
-def render_text(raw: str) -> str:
+def render_text(raw: str, stats: ParseStats | None = None) -> str:
     """Plain text of one bullet: links become their labels, sources and markup are removed."""
     text = LINK_RE.sub(lambda m: m.group(2) if m.group(2) is not None else m.group(1), raw)
     text = EXTLINK_RE.sub("", text)
     for _ in range(5):
-        new = TEMPLATE_RE.sub(lambda m: _render_template(m.group(1)), text)
+        new = TEMPLATE_RE.sub(lambda m: _render_template(m.group(1), stats), text)
         if new == text:
             break
         text = new
@@ -210,14 +295,18 @@ def _heading(line: str) -> str | None:
     return None
 
 
-def _content_lines(wikitext: str) -> list[str]:
+def _content_lines(wikitext: str, stats: ParseStats | None = None) -> list[str]:
     text = REF_RE.sub("", COMMENT_RE.sub("", wikitext))
     lines: list[str] = []
     for line in text.splitlines():
         line = line.strip()
         if line.lower().startswith("{{current events"):
             if "content=" not in line:
+                if stats is not None and stats.layout == "none":
+                    stats.layout = "current"
                 continue
+            if stats is not None:
+                stats.layout = "content"
             line = line.split("content=", 1)[1].strip()
         if line.endswith("}}") and line.count("{{") < line.count("}}"):
             line = line[:-2].rstrip().rstrip("|").rstrip()
@@ -226,19 +315,52 @@ def _content_lines(wikitext: str) -> list[str]:
     return lines
 
 
-def parse_wikitext(wikitext: str) -> list[ParsedEvent]:
-    """All events on a day page, in page order."""
+def _stray_kind(line: str) -> str:
+    if line in {"}}", "|}}", "|"} or line.startswith("__"):
+        return ""
+    if line.startswith("#"):
+        return "numbered list"
+    if line.startswith(":"):
+        return "indented"
+    if line.startswith("{|") or line.startswith("|"):
+        return "table"
+    if line.startswith("{{"):
+        return "template"
+    if line.startswith("<"):
+        return "html"
+    if line.startswith("[[") and line.lower().startswith(("[[category:", "[[file:", "[[image:")):
+        return "category or file"
+    return "text"
+
+
+def parse_wikitext(wikitext: str, stats: ParseStats | None = None) -> list[ParsedEvent]:
+    """All events on a day page, in page order. Pass ``stats`` to count what was not read."""
     category = UNCATEGORIZED
     items: list[tuple[int, str, str]] = []
-    for line in _content_lines(wikitext):
+    for line in _content_lines(wikitext, stats):
         bullet = BULLET_RE.match(line)
         if bullet:
             if bullet.group(2).strip():
                 items.append((len(bullet.group(1)), bullet.group(2), category))
+                if stats is not None:
+                    stats.bullets += 1
+            elif stats is not None:
+                stats.empty_bullets += 1
             continue
         heading = _heading(line)
         if heading:
-            category = heading
+            category = CATEGORY_ALIASES.get(heading.lower(), heading)
+            if stats is not None:
+                stats.headings += 1
+                if heading not in KNOWN_CATEGORIES:
+                    stats.bump(stats.other_headings, heading)
+                    if category in KNOWN_CATEGORIES:
+                        stats.mapped_headings += 1
+            continue
+        if stats is not None:
+            kind = _stray_kind(line)
+            if kind:
+                stats.bump(stats.stray_lines, kind)
     events: list[ParsedEvent] = []
     story: list[tuple[int, list[str]]] = []
     for i, (depth, raw, cat) in enumerate(items):
@@ -248,24 +370,37 @@ def parse_wikitext(wikitext: str) -> list[ParsedEvent]:
         has_children = i + 1 < len(items) and items[i + 1][0] > depth
         if has_children and not urls:
             story.append((depth, _links(raw)))
+            if stats is not None:
+                stats.story_headings += 1
             continue
-        text = render_text(raw)
+        text = render_text(raw, stats)
         if not text:
+            if stats is not None:
+                stats.empty_bullets += 1
             continue
         story_links: list[str] = []
-        for _, links in reversed(story):
-            story_links.extend(t for t in links if t not in story_links)
-        events.append(
-            ParsedEvent(
-                category=cat,
-                text=text,
-                depth=depth,
-                links=tuple(_links(raw)),
-                story_links=tuple(story_links),
-                source_urls=tuple(urls),
-                source_domains=tuple(domains),
-            )
+        story_levels: list[int] = []
+        for level, (_, links) in enumerate(reversed(story), start=1):
+            for title in links:
+                if title not in story_links:
+                    story_links.append(title)
+                    story_levels.append(level)
+        event = ParsedEvent(
+            category=cat,
+            text=text,
+            depth=depth,
+            links=tuple(_links(raw)),
+            story_links=tuple(story_links),
+            source_urls=tuple(urls),
+            source_domains=tuple(domains),
+            story_levels=tuple(story_levels),
         )
+        events.append(event)
+        if stats is not None:
+            stats.events += 1
+            stats.uncategorized_events += cat == UNCATEGORIZED
+            stats.events_without_links += not (event.links or event.story_links)
+            stats.events_without_sources += not urls
     return events
 
 
@@ -279,14 +414,16 @@ def event_id_for(day: date, event: ParsedEvent) -> str:
     return f"{day.isoformat()}-{hashlib.sha1(key.encode('utf-8')).hexdigest()[:8]}"
 
 
-def build_events(page: PortalPage, retrieved_at: datetime) -> tuple[list[Event], list[ParsedLink]]:
+def build_events(
+    page: PortalPage, retrieved_at: datetime, stats: ParseStats | None = None
+) -> tuple[list[Event], list[ParsedLink]]:
     """Events and their links for one day page. Story links follow the event's own links."""
     if page.missing or page.wikitext is None or page.revision_id is None:
         return [], []
     events: list[Event] = []
     links: list[ParsedLink] = []
     seen: dict[str, int] = {}
-    for parsed in parse_wikitext(page.wikitext):
+    for parsed in parse_wikitext(page.wikitext, stats):
         base = event_id_for(page.day, parsed)
         seen[base] = seen.get(base, 0) + 1
         event_id = base if seen[base] == 1 else f"{base}-{seen[base]}"
@@ -308,11 +445,12 @@ def build_events(page: PortalPage, retrieved_at: datetime) -> tuple[list[Event],
         for title in parsed.links:
             order += 1
             links.append(ParsedLink(event_id, title, order, True))
-        for title in parsed.story_links:
+        levels = parsed.story_levels or (1,) * len(parsed.story_links)
+        for title, level in zip(parsed.story_links, levels, strict=True):
             if title in parsed.links:
                 continue
             order += 1
-            links.append(ParsedLink(event_id, title, order, False))
+            links.append(ParsedLink(event_id, title, order, False, level))
     return events, links
 
 

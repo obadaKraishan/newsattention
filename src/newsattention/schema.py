@@ -178,6 +178,11 @@ class EventPage(_Frozen):
     page_title: str = Field(description="The canonical title, after redirects")
     link_order: int = Field(ge=1, description="1 for the first link, in reading order")
     in_text: bool = Field(description="True for links in the event's text, False for story links")
+    story_level: int | None = Field(
+        default=None,
+        ge=1,
+        description="For story links, headings up from the event (1 is the nearest)",
+    )
     role: Literal["unknown", "event", "context"] = "unknown"
 
     @field_validator("event_id")
@@ -207,6 +212,8 @@ class EventPage(_Frozen):
     def _missing_page(self) -> EventPage:
         if self.page_id is None and self.qid is not None:
             raise ValueError("A link to a page that does not exist cannot have a qid.")
+        if self.in_text and self.story_level is not None:
+            raise ValueError("Links in the event's text have no story_level; leave it empty.")
         return self
 
 

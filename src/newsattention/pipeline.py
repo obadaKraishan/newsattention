@@ -185,6 +185,7 @@ class Sample:
                     page_title=resolved[link["title"]].title,
                     link_order=link["link_order"],
                     in_text=link["in_text"],
+                    story_level=link.get("story_level"),
                 )
                 for link in links
             ]

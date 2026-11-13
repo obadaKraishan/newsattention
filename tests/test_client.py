@@ -33,7 +33,7 @@ def test_user_agent_has_project_version_contact_and_library():
 
 
 def test_now_utc_format():
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", now_utc())
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", now_utc())
 
 
 @pytest.mark.parametrize(
@@ -174,9 +174,11 @@ def test_budget_from_log_counts_calls_since(tmp_path):
         "GET", "https://wikimedia.org/api/rest_v1/metrics/a", 200, 20, "2026-11-13T00:00:00Z"
     )
     log.append("GET", "https://www.wikidata.org/w/api.php", 200, 5, "2026-11-13T01:00:00Z")
+    log.append("GET", "https://analytics.wikimedia.org/x.tsv", 200, 7, "2026-11-13T02:00:00Z")
     budget = Budget.from_log(log.rows(), "2026-11-13T00:00:00Z")
-    assert budget.used == {"analytics": 1, "wikidata": 1}
-    assert budget.bytes_used == 25
+    assert budget.used == {"analytics": 1, "wikidata": 1, "files": 1}
+    # Only file downloads count against the byte cap.
+    assert budget.bytes_used == 7
 
 
 def test_byte_cap(make_client):
@@ -259,3 +261,38 @@ def test_min_interval_spaces_requests(make_client):
     client.get(REST)
     client.get(REST)
     assert client.sleeps == [pytest.approx(0.25)]
+
+
+def test_group_cap_covers_wikipedia_and_wikidata(make_client):
+    budget = Budget(caps={}, group_caps={"mediawiki": (("action", "wikidata"), 2)})
+    client, session = make_client(ok({"query": {}}), budget=budget)
+    client.action_api(API, {})
+    client.action_api("https://www.wikidata.org/w/api.php", {})
+    with pytest.raises(CallCapReached, match="mediawiki call cap"):
+        client.action_api(API, {})
+    client.get(REST)
+    assert len(session.calls) == 3
+
+
+def test_network_errors_are_logged_and_retried(make_client):
+    answers = [
+        requests.ReadTimeout("slow"),
+        requests.ConnectionError("down"),
+        FakeResponse(200, {}),
+    ]
+
+    def handler(m, u, p, h):
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    client, _ = make_client(handler)
+    assert client.get(REST).status_code == 200
+    assert [r["status"] for r in client.log.rows()] == ["0", "0", "200"]
+    assert client.sleeps == [2.0, 4.0]
+    client, _ = make_client(
+        lambda m, u, p, h: (_ for _ in ()).throw(requests.Timeout()), max_retries=1
+    )
+    with pytest.raises(SourceBlocked, match="network"):
+        client.get(REST)

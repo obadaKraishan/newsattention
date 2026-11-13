@@ -214,3 +214,46 @@ def test_fetch_pages_batches_and_marks_missing_days(make_client):
     assert [p.missing for p in pages] == [False, True, False]
     assert pages[0].revision_id == 5
     assert pages[0].wikitext == "*x"
+
+
+def test_story_levels_count_headings_up():
+    events = parse_wikitext(MODERN)
+    assert events[0].story_levels == (1, 1, 2)
+    assert events[1].story_levels == (1,)
+    page = PortalPage("Portal:Current events/2031 March 4", date(2031, 3, 4), 1, 77, None, MODERN)
+    _, links = build_events(page, datetime(2031, 3, 6, tzinfo=timezone.utc))
+    assert [link.story_level for link in links[:5]] == [None, None, 1, 1, 2]
+
+
+def test_parse_stats_count_what_was_not_read():
+    from newsattention.portal import ParseStats
+
+    text = MODERN + (
+        "'''Other news'''\n*A [[thing]] {{mystery template|x}} happens.\n"
+        "#numbered line\nloose text\n{{Some template}}\n<div>\n[[Category:X]]\n*\n__NOTOC__\n"
+    )
+    stats = ParseStats()
+    events = parse_wikitext(text, stats)
+    assert stats.layout == "current"
+    assert stats.events == len(events) == 4
+    assert stats.story_headings == 2
+    assert stats.other_headings == {"Other news": 1}
+    assert stats.unknown_templates == {"mystery template": 1}
+    assert stats.stray_lines == {
+        "numbered list": 1,
+        "text": 1,
+        "template": 1,
+        "html": 1,
+        "category or file": 1,
+    }
+    assert stats.empty_bullets == 1
+    assert stats.events_without_sources == 1
+    old = ParseStats()
+    parse_wikitext(OLD, old)
+    assert old.layout == "content"
+    assert old.events_without_sources == 2
+    none = ParseStats()
+    parse_wikitext("*[[Euro]] notes appear.\n", none)
+    assert none.layout == "none"
+    assert none.uncategorized_events == 1
+    assert none.events_without_links == 0
