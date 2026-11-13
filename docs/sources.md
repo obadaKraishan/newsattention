@@ -89,7 +89,17 @@ Primary pages: [current README](https://analytics.wikimedia.org/published/datase
   files do hold United States rows for 2023-02-06 to 2023-09-19, but from that older method:**
   the 2023-02-06 file has 44,219 United States rows whose smallest count is 450 (the historical
   set's threshold), against 90 for every other country. So a file of that period mixes two
-  methods, and NewsAttention records the smallest count per country and day as data. In the listing
+  methods, and NewsAttention records the smallest count per country and day as data. Across
+  all files, United States rows start at 450 on 184 days (2023-02-06 to 2023-09-19, minus 42
+  days on which they start near 90, plus the seven rebuilt days), and every country starts at
+  450 or more on the seven rebuilt days (127 to 133 countries). From 2024-02-15 on, 19 to 37
+  countries a day start at 450 or more: the medium and higher-risk countries, whose thresholds
+  are 550 and 1,000.
+- **Rows per file.** 499,048,320 rows in the 1,375 files from 2023-02-06 to 2026-11-12 (median
+  363,538 a day); 161 to 228 country codes a file (median 187).
+- **Two pages, one item.** One Wikidata item can appear with two page ids in the same
+  language, country and day (up to about 1% of a month's rows of linked items in late 2026), for
+  example a page and a redirect linked to the same item. In the listing
   those seven files are about 6 MB, against 20 to 26 MB for normal days. The file for
   **2026-11-08 is empty** (0 bytes, posted 2026-11-09 02:39).
 - **Bots.** "From 25 May 2023 on, a more aggressive filter was used to only retrieve
