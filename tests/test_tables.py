@@ -229,3 +229,23 @@ def test_older_method_pairs_need_the_data_to_agree(tmp_path):
         (date(2023, 5, 1), "US"),
         (date(2023, 11, 13), "FR"),
     }
+
+
+def test_pages_leave_out_titles_no_current_event_links(tmp_path):
+    store = make_store(tmp_path)
+    backfill.append_jsonl(
+        store.resolved,
+        [
+            {
+                "linked_title": "Unlinked Place",
+                "title": "Unlinked Place",
+                "page_id": 999,
+                "qid": "Q999",
+                "redirected": False,
+                "resolved_at": "x",
+            }
+        ],
+    )
+    out = tmp_path / "tables"
+    assert tables.build_pages(store, out, START, LAST)["pages"] == 2
+    assert 999 not in pq.read_table(out / "pages.parquet")["page_id"].to_pylist()

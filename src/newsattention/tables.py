@@ -140,9 +140,12 @@ PAGES_SCHEMA = pa.schema(
 
 
 def build_pages(store: Store, out: Path, span_start: date, span_end: date) -> dict[str, int]:
+    """One row per English article that a current event links (not every title ever resolved)."""
+    resolved = backfill.load_resolved(store)
     pages: dict[int, tuple[str | None, str]] = {}
-    for res in backfill.load_resolved(store).values():
-        if res.page_id:
+    for link in backfill.collect_links(store):
+        res = resolved.get(link["title"])
+        if res is not None and res.page_id:
             pages[res.page_id] = (res.qid, res.title)
     model = backfill.CreationModel(backfill.read_jsonl(store.anchors))
     moves = backfill.load_moves(store, set(pages))
