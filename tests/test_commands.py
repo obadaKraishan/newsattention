@@ -54,6 +54,14 @@ def test_dp_plan_api_and_tables(make_client, monkeypatch, tmp_path, capsys):
     assert planned["calls"] == 2 and planned["appended_now"] == 1
     assert run(make_client, monkeypatch, tmp_path, "api-backfill", *span)[0] == 0
     assert summary(capsys.readouterr().out)["calls"] == 2
+    report = tmp_path / "api_check.json"
+    assert run(make_client, monkeypatch, tmp_path, "api-check", *span, "--out", str(report))[0] == 0
+    checked = summary(capsys.readouterr().out)
+    assert checked["problems"] == [] and checked["refetch"] == 0
+    assert json.loads(report.read_text())["status_lines"] == 2
+    (tmp_path / "store" / "api" / "status.jsonl").write_text("")
+    assert run(make_client, monkeypatch, tmp_path, "api-check", *span)[0] == 1
+    assert summary(capsys.readouterr().out)["refetch"] == 2
 
 
 def test_plan_refuses_force(make_client, monkeypatch, tmp_path, capsys):

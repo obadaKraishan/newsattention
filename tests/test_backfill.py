@@ -490,3 +490,128 @@ def test_move_windows_skip_covered_days(tmp_path):
         (date(2025, 3, 1), date(2025, 3, 31), "2025-03"),
     ]
     assert backfill._move_windows(folder, date(2025, 1, 5), date(2025, 1, 20)) == []
+
+
+def _api_store(make_client, store, fail_title: str | None = None):
+    """Five planned calls in chunks of two; T1 has no views, ``fail_title`` answers 400."""
+    plan = [
+        {"qid": f"Q{i}", "project": "en.wikipedia", "title": f"T{i}", "page_id": i, "rank": 0}
+        | {"kind": "current"}
+        for i in range(5)
+    ]
+    plan[4] = {**plan[4], "kind": "old_title", "span_start": "2025-01-01", "span_end": "2025-01-02"}
+
+    def handler(method, url, params, headers):
+        if "/T1/" in url:
+            return FakeResponse(404, {})
+        if fail_title and f"/{fail_title}/" in url:
+            return FakeResponse(400, {})
+        days = ["2025010100", "2025010200"] if "/T4/" in url else ["2025010100", "2025012000"]
+        return FakeResponse(200, {"items": [{"timestamp": t, "views": 3} for t in days]})
+
+    client, _ = make_client(handler)
+    backfill.api_backfill(
+        client, store, plan, date(2025, 1, 1), date(2025, 1, 31), chunk=2, say=lambda m: None
+    )
+    return plan
+
+
+def _check(store, plan):
+    return backfill.check_api(store, plan, date(2025, 1, 1), date(2025, 1, 31))
+
+
+def test_check_api_passes_a_whole_run(make_client, store):
+    plan = _api_store(make_client, store)
+    out = _check(store, plan)
+    assert out["problems"] == [] and out["refetch"] == []
+    assert out["by_status"] == {"no views": 1, "ok": 4}
+    assert out["chunk_files"] == 3 and out["indices_covered_by_files"] == 5
+    assert out["rows_read"] == 8
+
+
+def _aside(store, name):
+    path = store.raw / "api" / name
+    path.rename(store.raw / name)
+
+
+def test_check_api_finds_a_missing_middle_chunk(make_client, store):
+    plan = _api_store(make_client, store)
+    _aside(store, "chunk-0000002.parquet")
+    out = _check(store, plan)
+    assert out["refetch"] == [2, 3]
+    assert out["problems"][0]["problem"] == "rows do not match"
+
+
+def test_check_api_finds_a_missing_first_chunk(make_client, store):
+    plan = _api_store(make_client, store)
+    _aside(store, "chunk-0000000.parquet")
+    out = _check(store, plan)
+    assert out["refetch"] == [0, 1]
+    assert out["problems"][0]["problem"] == "no chunk file"
+
+
+def test_check_api_finds_a_damaged_chunk(make_client, store):
+    plan = _api_store(make_client, store)
+    path = store.raw / "api" / "chunk-0000002.parquet"
+    data = path.read_bytes()
+    _aside(store, path.name)
+    path.write_bytes(data[: len(data) // 2])
+    out = _check(store, plan)
+    assert out["refetch"] == [2, 3]
+    assert out["problems"][0]["problem"] == "unreadable"
+
+
+def test_check_api_finds_rows_of_another_title(make_client, store):
+    plan = _api_store(make_client, store)
+    plan[4] = {**plan[4], "title": "Renamed"}
+    out = _check(store, plan)
+    assert out["refetch"] == [4]
+
+
+def test_check_api_finds_days_outside_the_span(make_client, store):
+    plan = _api_store(make_client, store)
+    plan[3] = {**plan[3], "span_start": "2025-01-01", "span_end": "2025-01-10"}
+    assert _check(store, plan)["refetch"] == [3]
+
+
+def test_check_api_finds_lost_and_doubled_status_lines(make_client, store):
+    plan = _api_store(make_client, store)
+    path = store.root / "api" / "status.jsonl"
+    lines = path.read_text().splitlines()
+    path.write_text("\n".join([lines[0], lines[0], *lines[1:3], lines[4]]) + "\n")
+    out = _check(store, plan)
+    kinds = [p["problem"] for p in out["problems"]]
+    assert "no status line" in kinds and "status lines" in kinds
+    assert out["refetch"] == [3]
+
+
+def test_check_api_lists_failed_calls_and_stray_files(make_client, store):
+    plan = _api_store(make_client, store, fail_title="T2")
+    (store.raw / "api" / "chunk-9999999.parquet").write_bytes(b"")
+    (store.raw / "api" / "chunk-x.parquet").write_bytes(b"")
+    out = _check(store, plan)
+    kinds = [p["problem"] for p in out["problems"]]
+    assert kinds.count("unexpected file") == 2 and "call failed" in kinds
+    assert out["refetch"] == [2]
+
+
+def test_api_backfill_flushes_each_chunk_before_its_progress(make_client, store, monkeypatch):
+    from newsattention import durable
+
+    seen: list[str] = []
+    real = durable.publish
+
+    def publish(tmp, dest, **kwargs):
+        real(tmp, dest, **kwargs)
+        seen.append(dest.name)
+
+    monkeypatch.setattr(durable, "publish", publish)
+    _api_store(make_client, store)
+    assert seen == [
+        "chunk-0000000.parquet",
+        "progress.json",
+        "chunk-0000002.parquet",
+        "progress.json",
+        "chunk-0000004.parquet",
+        "progress.json",
+    ]

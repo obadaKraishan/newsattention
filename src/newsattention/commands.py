@@ -199,6 +199,18 @@ def cmd_api_backfill(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_api_check(args: argparse.Namespace) -> int:
+    """Check the saved language views against the plan and the status log (no requests)."""
+    store = store_of(args)
+    plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
+    out = backfill.check_api(store, plan, SPAN_START, args.end)
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(out, indent=2, default=str) + "\n")
+    _print({k: v for k, v in out.items() if k != "refetch"} | {"refetch": len(out["refetch"])})
+    return 1 if out["problems"] else 0
+
+
 def cmd_tables(args: argparse.Namespace) -> int:
     from newsattention import tables
 
@@ -292,6 +304,12 @@ def register(sub: Any) -> None:
 
     p = sub.add_parser("api-backfill", parents=[common, span], help="fetch the language views")
     p.set_defaults(func=cmd_api_backfill)
+
+    p = sub.add_parser(
+        "api-check", parents=[common, span], help="check the saved language views (no requests)"
+    )
+    p.add_argument("--out", type=Path, help="write the full report, with the indices, as JSON")
+    p.set_defaults(func=cmd_api_check)
 
     p = sub.add_parser("tables", parents=[common, span], help="build the Parquet tables")
     p.add_argument("--out", type=Path, default=Path("data/interim/tables"))

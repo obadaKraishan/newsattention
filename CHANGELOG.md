@@ -14,6 +14,14 @@ All notable changes to this project are documented here. The format follows
   English move log), `dp-download` and `dp-filter` (the country files, with the documented
   gaps and each day's smallest count per country recorded), `plan` (append-only) and
   `api-backfill` (raw chunks of 250 calls).
+- `api-check`: checks, without a request, that every planned language-view call has its saved
+  result: each chunk is read in full and compared with the plan and the status log (row count,
+  identity, dates inside the span, no day twice), and the indices to fetch again are listed.
+- Raw files, the store's state files (progress, status, revisions, coverage, country rows) and
+  the request log are flushed to the disk before a run moves on (`F_FULLFSYNC` on macOS, which
+  also empties the drive's cache; `fsync` elsewhere). A chunk of language views is on the disk
+  before its status and progress lines are written, so an external drive that drops off stops
+  the run instead of losing a chunk.
 - `tables`: events, event_pages, pages, views_dp, views_api (moved English pages joined across
   their titles and flagged), attention, attention_summary and country_status, as Parquet files
   by month; `validate` checks Parquet files and folders.

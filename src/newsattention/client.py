@@ -27,7 +27,7 @@ from urllib.parse import urlsplit
 
 import requests
 
-from newsattention import __version__
+from newsattention import __version__, durable
 
 CONTACT_URL = "https://github.com/obadaKraishan"
 LOG_FIELDS = ["time", "method", "host", "path", "status", "bytes"]
@@ -89,6 +89,7 @@ class UsageLog:
             if new:
                 writer.writerow(LOG_FIELDS)
             writer.writerow([when, method, parts.netloc, parts.path, status, nbytes])
+            durable.flush_file(fh)
 
     def rows(self) -> list[dict[str, str]]:
         if not self.path.exists():
@@ -352,8 +353,7 @@ class WikimediaClient:
             self.log.append("GET", url, resp.status_code, total, when)
             self.budget.record(family, total)
             raise
-        tmp.rename(dest)
-        dest.chmod(0o444)
+        durable.publish(tmp, dest, read_only=True)
         self.log.append("GET", url, resp.status_code, total, when)
         self.budget.record(family, total)
         return total

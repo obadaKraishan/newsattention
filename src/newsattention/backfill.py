@@ -36,7 +36,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import requests
 
-from newsattention import dpviews, pageviews, portal, wikidata
+from newsattention import dpviews, durable, pageviews, portal, wikidata
 from newsattention.client import CallCapReached, SourceBlocked, WikimediaClient
 
 EN = "en.wikipedia"
@@ -83,6 +83,7 @@ def append_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> int:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
             n += 1
+        durable.flush_file(fh)
     return n
 
 
@@ -97,7 +98,7 @@ def write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".part")
     tmp.write_text(json.dumps(data, ensure_ascii=False, default=str), encoding="utf-8")
-    tmp.replace(path)
+    durable.publish(tmp, path, replace=True)
 
 
 def write_once(path: Path, text: str) -> bool:
@@ -107,8 +108,7 @@ def write_once(path: Path, text: str) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".part")
     tmp.write_text(text, encoding="utf-8")
-    tmp.rename(path)
-    path.chmod(0o444)
+    durable.publish(tmp, path, read_only=True)
     return True
 
 
@@ -733,7 +733,9 @@ def dp_filter(
             cols["country"].append(row.country)
             cols["views"].append(row.views)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        pq.write_table(pa.table(cols, schema=DP_SCHEMA), dest, compression="zstd")
+        tmp = dest.with_name(dest.name + ".part")
+        pq.write_table(pa.table(cols, schema=DP_SCHEMA), tmp, compression="zstd")
+        durable.publish(tmp, dest, replace=True)
         append_jsonl(
             stats_path,
             [
@@ -951,8 +953,8 @@ def api_backfill(
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 tmp = dest.with_name(dest.name + ".part")
                 pq.write_table(pa.table(rows, schema=API_SCHEMA), tmp, compression="zstd")
-                tmp.rename(dest)
-                dest.chmod(0o444)
+                # On the disk before the status and progress files say the calls are done.
+                durable.publish(tmp, dest, read_only=True)
             append_jsonl(status_path, statuses)
             write_json(progress_path, {"next": done_to, "updated": iso(utc_now())})
         if stop is not None:
@@ -961,3 +963,123 @@ def api_backfill(
         i = done_to
         say(f"api: {i:,} of {len(plan):,} calls done")
     return out
+
+
+def check_api(store: Store, plan: list[dict[str, Any]], start: date, end: date) -> dict[str, Any]:
+    """Check, without a request, that every planned call has its saved result on disk.
+
+    Each chunk file covers the plan from its first index up to the next file's first index.
+    Every file is read in full, and each plan index must have one status line and, in its
+    chunk, as many rows as that line says days, with the plan's qid, project, title and kind,
+    dates inside its span and no day twice. ``refetch`` lists the indices to fetch again.
+    """
+    progress_path = store.root / "api" / "progress.json"
+    done = json.loads(progress_path.read_text())["next"] if progress_path.exists() else 0
+    statuses: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for row in read_jsonl(store.root / "api" / "status.jsonl"):
+        statuses[int(row["plan_index"])].append(row)
+    folder = store.raw / "api"
+    problems: list[dict[str, Any]] = []
+    refetch: set[int] = set()
+    chunks: list[tuple[int, Path]] = []
+    for path in sorted(folder.glob("chunk-*.parquet")) if folder.exists() else []:
+        try:
+            first = int(path.stem.split("-", 1)[1])
+        except ValueError:
+            first = -1
+        if 0 <= first < done:
+            chunks.append((first, path))
+        else:
+            problems.append({"problem": "unexpected file", "where": path.name, "indices": 0})
+    chunks.sort()
+    firsts = [first for first, _ in chunks]
+
+    def flag(kind: str, where: str, indices: Iterable[int], detail: str = "") -> None:
+        idx = sorted(set(indices))
+        refetch.update(idx)
+        problems.append({"problem": kind, "where": where, "indices": len(idx), "detail": detail})
+
+    by_status: dict[str, int] = defaultdict(int)
+    for j in range(done):
+        rows = statuses.get(j, [])
+        if not rows:
+            flag("no status line", "status.jsonl", [j])
+        elif len(rows) > 1:
+            problems.append({"problem": "status lines", "where": f"index {j}", "indices": 1})
+        if rows:
+            by_status[str(rows[-1]["status"])] += 1
+            if not str(rows[-1]["status"]).startswith(("ok", "no views")):
+                flag("call failed", "status.jsonl", [j], str(rows[-1]["status"]))
+    if any(j >= done for j in statuses):
+        problems.append({"problem": "status past progress", "where": "status.jsonl", "indices": 1})
+    covered = 0
+    if done and (not firsts or firsts[0] != 0):
+        upto = firsts[0] if firsts else done
+        flag("no chunk file", f"plan 0 to {upto - 1}", range(upto))
+    rows_read = 0
+    for k, (first, path) in enumerate(chunks):
+        last = (firsts[k + 1] if k + 1 < len(firsts) else done) - 1
+        span_idx = range(first, last + 1)
+        covered += len(span_idx)
+        try:
+            table = pq.read_table(path)
+            if table.schema.remove_metadata() != API_SCHEMA:
+                raise ValueError(f"columns {table.schema.names}")
+            groups = table.group_by(["plan_index", "qid", "project", "title", "kind"]).aggregate(
+                [
+                    ("date", "count"),
+                    ("date", "count_distinct"),
+                    ("date", "min"),
+                    ("date", "max"),
+                    ("views", "min"),
+                    ("views", "count"),
+                ]
+            )
+            got = {int(g["plan_index"]): g for g in groups.to_pylist()}
+        except Exception as exc:  # any read failure means the file is damaged
+            flag("unreadable", path.name, span_idx, f"{type(exc).__name__}: {exc}")
+            continue
+        rows_read += table.num_rows
+        outside = [j for j in got if j not in span_idx]
+        if outside:
+            flag("rows outside chunk", path.name, span_idx, f"{len(outside)} indices")
+            continue
+        bad: list[int] = []
+        if len(got) != groups.num_rows:  # one index with two identities
+            bad.extend(span_idx)
+        for j in span_idx:
+            want = statuses[j][-1].get("days", 0) if statuses.get(j) else None
+            g = got.get(j)
+            n = g["date_count"] if g else 0
+            if want is None or n != want:
+                bad.append(j)
+                continue
+            if g is None:
+                continue
+            item = plan[j]
+            first_day = date.fromisoformat(item.get("span_start") or start.isoformat())
+            last_day = date.fromisoformat(item.get("span_end") or end.isoformat())
+            if (
+                (g["qid"], g["project"], g["title"], g["kind"])
+                != (item["qid"], item["project"], item["title"], item["kind"])
+                or g["date_count_distinct"] != n
+                or g["views_count"] != n
+                or g["views_min"] < 0
+                or not first_day <= g["date_min"] <= g["date_max"] <= last_day
+            ):
+                bad.append(j)
+        if sum(g["date_count"] for g in got.values()) != table.num_rows:  # null dates or keys
+            bad.extend(span_idx)
+        if bad:
+            flag("rows do not match", path.name, bad)
+    return {
+        "plan": len(plan),
+        "progress_next": done,
+        "status_lines": sum(len(v) for v in statuses.values()),
+        "by_status": dict(sorted(by_status.items())),
+        "chunk_files": len(chunks),
+        "indices_covered_by_files": covered,
+        "rows_read": rows_read,
+        "problems": problems,
+        "refetch": sorted(refetch),
+    }
