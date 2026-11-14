@@ -31,6 +31,9 @@ All notable changes to this project are documented here. The format follows
   `event_pages` gains `role_confidence`.
 - `api-backfill --max-calls N` stops at the first chunk boundary after N calls, so a long run
   can be done in slices and another command can take the lock in between.
+- `review-sheets`: draws the hand-checked sample (150 events, seeded, spread evenly over 2023 to
+  2026, half where the rule finds an `event` page), writes three blind sheets of 50 and a guide,
+  and keeps the rule's answers in a separate answer key that the sheets never reference.
 - Review sheets (`newsattention.review`): `.xlsx` workbooks written with the standard library,
   with a guide tab and one block per event (date, category, text, numbered links that open the
   article) and two dropdowns per event; `review-check FILE...` reads filled sheets back and

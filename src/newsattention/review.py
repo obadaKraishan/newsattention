@@ -382,3 +382,44 @@ def check_sheet(path: Path | str) -> SheetCheck:
     if not out.events:
         out.problems.append("no events found on the Events tab")
     return out
+
+
+# Drawing the sample ---------------------------------------------------------------------------
+
+YEAR_SIZES = {2023: 38, 2024: 38, 2025: 37, 2026: 37}
+
+
+def draw_sample(
+    found: dict[str, bool],
+    seed: int,
+    year_sizes: dict[int, int] | None = None,
+    exclude: Iterable[str] = (),
+) -> list[str]:
+    """Event ids, seeded: spread over the years, half where the rule found an event page.
+
+    ``found`` maps every eligible event id (``YYYY-MM-DD-...``) to whether the rule gives it an
+    ``event`` page. Within a year the larger half goes to "found" in even years and to "not
+    found" in odd years, so the two strata are even over the whole sample. The result is in
+    random order.
+    """
+    import random
+
+    rng = random.Random(seed)
+    sizes = year_sizes or YEAR_SIZES
+    skip = set(exclude)
+    chosen: list[str] = []
+    for year, size in sorted(sizes.items()):
+        pool = sorted(e for e in found if e.startswith(f"{year}-") and e not in skip)
+        yes = [e for e in pool if found[e]]
+        no = [e for e in pool if not found[e]]
+        n_yes = size // 2 + (size % 2 if year % 2 == 0 else 0)
+        n_no = size - n_yes
+        if len(yes) < n_yes or len(no) < n_no:
+            raise ValueError(f"{year}: too few events to sample ({len(yes)} found, {len(no)} not)")
+        chosen += rng.sample(yes, n_yes) + rng.sample(no, n_no)
+    rng.shuffle(chosen)
+    return chosen
+
+
+def split(ids: Sequence[str], size: int = 50) -> list[list[str]]:
+    return [list(ids[i : i + size]) for i in range(0, len(ids), size)]

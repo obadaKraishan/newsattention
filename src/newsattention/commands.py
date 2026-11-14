@@ -230,6 +230,79 @@ def cmd_old_titles(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_review_sheets(args: argparse.Namespace) -> int:
+    """Draw the hand-checked sample and write the blind review sheets and the answer key."""
+    from newsattention import review, roles, tables
+
+    store = store_of(args)
+    files, all_roles, events = tables.compute_roles(store, args.tables)
+    links: dict[str, list[dict[str, Any]]] = {}
+    for rows in files.values():
+        for r in rows:
+            links.setdefault(r["event_id"], []).append(r)
+    for rows in links.values():
+        rows.sort(key=lambda r: r["link_order"])
+    found = {eid: any(role == "event" for role, _ in rs) for eid, rs in all_roles.items()}
+    exclude = []
+    if args.exclude and args.exclude.exists():
+        exclude = json.loads(args.exclude.read_text())
+    ids = review.draw_sample(found, args.seed, exclude=exclude)
+    out = args.out
+    out.mkdir(parents=True, exist_ok=True)
+    key = []
+    for k, batch in enumerate(review.split(ids, 50), 1):
+        sheet_events = []
+        for n, eid in enumerate(batch, 1):
+            ev = events[eid]
+            rows = links[eid]
+            sheet_events.append(
+                review.SheetEvent(
+                    n,
+                    eid,
+                    ev["date"].isoformat(),
+                    ev["category"],
+                    ev["text"],
+                    [r["page_title"] for r in rows],
+                )
+            )
+            assigned = all_roles[eid]
+            event_link = next(
+                (
+                    r["link_order"]
+                    for r, (role, _) in zip(rows, assigned, strict=True)
+                    if role == "event"
+                ),
+                None,
+            )
+            key.append(
+                {
+                    "sheet": f"sheet-{k}.xlsx",
+                    "number": n,
+                    "event_id": eid,
+                    "rule_version": roles.RULE_VERSION,
+                    "stratum_event_found": found[eid],
+                    "Q1": event_link or "none",
+                    "Q2": roles.main_story(rows, assigned) or "none",
+                    "roles": [[role, conf] for role, conf in assigned],
+                }
+            )
+        review.write_sheet(out / f"sheet-{k}.xlsx", sheet_events, review.GUIDE)
+    backfill.write_json(
+        args.key, {"seed": args.seed, "rule_version": roles.RULE_VERSION, "events": key}
+    )
+    (out / "guide.md").write_text("\n\n".join(review.GUIDE) + "\n", encoding="utf-8")
+    _print(
+        {
+            "events": len(ids),
+            "sheets": len(review.split(ids, 50)),
+            "found": sum(found[e] for e in ids),
+            "key": str(args.key),
+            "excluded": len(exclude),
+        }
+    )
+    return 0
+
+
 def cmd_review_check(args: argparse.Namespace) -> int:
     """Read filled review sheets back; report what is missing or invalid (never a title)."""
     from newsattention import review
@@ -385,6 +458,14 @@ def register(sub: Any) -> None:
     p.add_argument("--english-only", action="store_true")
     p.add_argument("--force", action="store_true", help="refused: a plan is only appended to")
     p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("review-sheets", parents=[common], help="draw the sample and write sheets")
+    p.add_argument("--tables", type=Path, default=Path("data/interim/tables"))
+    p.add_argument("--out", type=Path, default=Path("data/interim/sheets"))
+    p.add_argument("--key", type=Path, default=Path("data/interim/answer-key/answer_key.json"))
+    p.add_argument("--seed", type=int, default=20261114)
+    p.add_argument("--exclude", type=Path, help="JSON list of event ids to leave out")
+    p.set_defaults(func=cmd_review_sheets)
 
     p = sub.add_parser("review-check", help="read filled review sheets back and check them")
     p.add_argument("files", nargs="+", type=Path)

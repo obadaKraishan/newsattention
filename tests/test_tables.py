@@ -296,3 +296,27 @@ def test_coverage_from_status_lines():
 
     with pytest.raises(ValueError, match="meta.json is missing"):
         backfill.coverage(plan, statuses, None, START)
+
+
+def test_review_sheets_command_writes_blind_sheets_and_a_separate_key(tmp_path, monkeypatch):
+    from newsattention import cli, review
+
+    store = make_store(tmp_path)
+    out = tmp_path / "tables"
+    tables.build_events(store, out)
+    tables.build_pages(store, out, START, LAST)
+    tables.build_views_dp(store, out, say=lambda m: None)
+    bank = tables.SeriesBank(START, LAST)
+    bank.series[("Q1", "en.wikipedia")] = np.full(bank.n, 50, dtype=np.int64)
+    tables.build_attention(store, out, bank, LAST, say=lambda m: None)
+    monkeypatch.setattr(review, "YEAR_SIZES", {2025: 1})
+    key = tmp_path / "key" / "answer_key.json"
+    sheets = tmp_path / "sheets"
+    argv = ["review-sheets", "--store", str(store.root), "--raw", str(store.raw)]
+    argv += ["--tables", str(out), "--out", str(sheets), "--key", str(key)]
+    assert cli.main(argv) == 0
+    assert sorted(p.name for p in sheets.iterdir()) == ["guide.md", "sheet-1.xlsx"]
+    entry = json.loads(key.read_text())["events"][0]
+    assert entry["sheet"] == "sheet-1.xlsx" and entry["Q1"] in ("none", 1, 2)
+    check = review.check_sheet(sheets / "sheet-1.xlsx")
+    assert check.events == 1 and check.answers[0]["event_id"] == entry["event_id"]

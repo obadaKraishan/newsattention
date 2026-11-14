@@ -94,3 +94,24 @@ def test_invalid_answers_are_named_by_event_number_only(tmp_path, capsys):
     for title in ("Fakeland", "Bramble", "earthquake"):
         assert title not in out
     assert (tmp_path / "a.json").exists()
+
+
+def test_the_sample_is_seeded_spread_and_half_found():
+    found = {f"{y}-01-{d:02d}-{k:08x}": k % 3 == 0 for y in (2023, 2024, 2025, 2026)
+             for d in range(1, 29) for k in range(4)}  # fmt: skip
+    ids = review.draw_sample(found, seed=7)
+    assert len(ids) == 150 and len(set(ids)) == 150
+    assert ids == review.draw_sample(found, seed=7) and ids != review.draw_sample(found, seed=8)
+    by_year = {y: sum(e.startswith(str(y)) for e in ids) for y in (2023, 2024, 2025, 2026)}
+    assert by_year == {2023: 38, 2024: 38, 2025: 37, 2026: 37}
+    assert sum(found[e] for e in ids) == 75
+    assert [len(b) for b in review.split(ids)] == [50, 50, 50]
+    skip = ids[:10]
+    assert not set(skip) & set(review.draw_sample(found, seed=7, exclude=skip))
+
+
+def test_too_few_events_for_a_stratum_is_a_plain_error():
+    import pytest
+
+    with pytest.raises(ValueError, match="2023: too few events"):
+        review.draw_sample({"2023-01-01-aaaaaaaa": True}, seed=1)
