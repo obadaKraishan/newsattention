@@ -12,34 +12,31 @@ and processes **D-1**, with a retry at 12:00 UTC if a file is late.
 
 ## The daily job (GitHub Actions)
 One workflow on a schedule, one job, strictly sequential requests through the project's client
-(the same User-Agent, backoff, `maxlag` and request log as in development).
+(the same User-Agent, backoff, `maxlag`, request log and one-command-at-a-time lock as in
+development). The job runs `newsattention daily`, which already exists and brings the store up
+to D-1 from wherever it stopped, so a missed day, or a week of them, costs nothing:
 
-1. **Events.** Read the portal pages for D-1 (first read), D-8 and D-31 (the re-reads after
-   7 and 30 days, each replacing the earlier read). Each read stores the revision id; events whose text or
-   links changed between the two reads keep their id when their first source is unchanged
-   (see the method's event ids).
-2. **Links.** Resolve the new and changed links to canonical titles, page ids and Wikidata ids
-   (the English Wikipedia API, 50 titles per request; a typical day needs two to four requests).
-3. **Country views.** Download the differentially private file for D-1 (about 18 MB) and keep
-   the rows of every item linked by an event in the last 60 days. The file is read once and not
-   kept by the job; its size and checksum go into the run's manifest.
-4. **Language views.** For each item linked in the last 60 days, the views for D-1 in English
-   and in its top five other languages. Two ways, to be chosen with the backfill:
-   - **Per-article API calls**, spaced to keep the call count low: one call when an item is
-     first linked (its 28-day baseline and the days since), then one call per item at +7 and
-     +28 days that covers the whole range. At about 17 events and 110 new links a day, that is
-     roughly 110 × 6 languages × 3 calls ≈ 2,000 calls a day, sequential (about 15 minutes).
-   - **The daily page-view dump** (`pageview_complete`, all articles in all languages): one
-     download a day instead of thousands of calls. Its size decides this (to be measured).
-5. **Measures.** Recompute the attention rows of every event in the last 60 days (baseline,
-   lift, peak, half-life, breadth); older events are final.
-6. **Checks.** `newsattention validate` on every table, the row counts against the last run,
-   and the call and byte counts against the job's caps. Any failure stops the job before
-   anything is published and opens an issue with the counts (no data in the issue).
+1. **Events.** The portal pages from the day after the last one read to D-1, and every day
+   whose re-read after 7 or 30 days is due (each re-read replaces the earlier read; the
+   revision ids stay on record).
+2. **Links.** New linked titles to canonical titles, page ids and Wikidata ids, and a fresh
+   look at linked articles that had no Wikidata item a day earlier.
+3. **Moves.** The English move log for the days not read yet.
+4. **Country views.** The differentially private files from the day after the last one known
+   (at least the last week, so an empty or missing file is asked for again for a week), and
+   the rows of linked items; when new items appear, the last 29 files are filtered again so
+   they have a baseline.
+5. **Language views.** For an item with no series yet: English and up to five other languages
+   over the whole span, and the old titles of a moved English page. For an item whose event
+   is 7 or 28 days old and whose English series does not reach that day: one call that closes
+   the gap, plus its old titles that redirect to it. The first live run (2026-11-14, for
+   2026-11-13) made 215 calls: 14 for 10 new items and 201 follow-ups.
+6. **Measures and checks** (`newsattention tables` and `validate`): the job rebuilds the tables;
+   any failure stops it before anything is published and opens an issue with the counts.
 7. **Publish** (only after the first release is approved, see below).
 
-The job keeps its state (the last day processed, the items being tracked, retries) in a small
-JSON manifest stored with the data, so a missed day is picked up on the next run.
+The state lives in the store (day files, the plan, its status and progress files and
+`api/meta.json`), so a run that stops is resumed by the next one.
 
 ## Where the tables land
 - **Hugging Face dataset** (`obadakr/newsattention`): the source of truth for the data.
