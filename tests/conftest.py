@@ -10,7 +10,17 @@ from urllib.parse import urlencode
 import pytest
 import requests
 
+from newsattention import lock
 from newsattention.client import Budget, UsageLog, WikimediaClient
+
+
+@pytest.fixture(autouse=True)
+def private_lock(tmp_path_factory: Any, monkeypatch: Any) -> Any:
+    """Every test gets its own Wikimedia lock file, released afterwards."""
+    path = tmp_path_factory.mktemp("lock") / "wikimedia.lock"
+    monkeypatch.setenv(lock.ENV_PATH, str(path))
+    yield path
+    lock.release_held()
 
 
 class FakeResponse:

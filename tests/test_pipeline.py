@@ -93,7 +93,7 @@ def handler(method, url, params, headers):
 @pytest.fixture
 def run(make_client, monkeypatch, tmp_path):
     client, session = make_client(handler)
-    monkeypatch.setattr(cli, "_client", lambda log, since, max_bytes: client)
+    monkeypatch.setattr(cli, "_client", lambda log, since, max_bytes, command: client)
 
     def go(*extra):
         return cli.main(
@@ -214,7 +214,7 @@ def test_sizes_command(make_client, monkeypatch, tmp_path, capsys):
     from tests.test_readers import LISTING
 
     client, _ = make_client(lambda m, u, p, h: FakeResponse(200, content=LISTING.encode()))
-    monkeypatch.setattr(cli, "_client", lambda log, since, max_bytes: client)
+    monkeypatch.setattr(cli, "_client", lambda log, since, max_bytes, command: client)
     assert cli.main(["sizes", "--out", str(tmp_path / "sizes.json")]) == 0
     data = json.loads((tmp_path / "sizes.json").read_text())
     assert data["country_project_page"]["files"] == 3
@@ -228,7 +228,7 @@ def test_real_client_factory_reads_the_log(tmp_path):
         "time,method,host,path,status,bytes\n"
         "2031-01-01T00:00:00Z,GET,wikimedia.org,/api/rest_v1/metrics/x,200,5\n"
     )
-    client = cli._client(log, "2030-12-31T00:00:00Z", 1000)
+    client = cli._client(log, "2030-12-31T00:00:00Z", 1000, "sample")
     assert client.budget.used == {"analytics": 1}
     assert client.budget.max_bytes == 1000
 

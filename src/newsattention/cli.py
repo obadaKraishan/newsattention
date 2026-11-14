@@ -8,7 +8,7 @@ import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from newsattention import __version__, dpviews
+from newsattention import __version__, dpviews, lock
 from newsattention.client import DEFAULT_CAPS, Budget, UsageLog, WikimediaClient
 from newsattention.validate import validate_file
 
@@ -18,7 +18,11 @@ DEFAULT_LOG = Path("data/usage_log.csv")
 MIN_INTERVAL = 0.35
 
 
-def _client(log: Path, since: str | None, max_bytes: int) -> WikimediaClient:
+def _client(log: Path, since: str | None, max_bytes: int, command: str) -> WikimediaClient:
+    try:
+        lock.hold(command)
+    except lock.CommandBusy as exc:
+        raise SystemExit(str(exc)) from None
     usage = UsageLog(log)
     start = since or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     budget = Budget.from_log(usage.rows(), start, dict(DEFAULT_CAPS), max_bytes)
@@ -58,7 +62,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 def cmd_sample(args: argparse.Namespace) -> int:
     from newsattention.pipeline import EN, Sample, days_between
 
-    client = _client(args.log, args.since, args.max_bytes)
+    client = _client(args.log, args.since, args.max_bytes, "sample")
     sample = Sample(
         client, args.out, args.raw, args.start, args.end, args.complete_until or args.end
     )
@@ -110,7 +114,7 @@ def cmd_sample(args: argparse.Namespace) -> int:
 
 
 def cmd_sizes(args: argparse.Namespace) -> int:
-    client = _client(args.log, args.since, args.max_bytes)
+    client = _client(args.log, args.since, args.max_bytes, "sizes")
     out = {}
     for dataset in (dpviews.CURRENT, dpviews.HISTORICAL, dpviews.PRE_2017):
         page = client.get(f"{dpviews.BASE}{dataset}/").text

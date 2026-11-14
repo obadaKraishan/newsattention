@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from newsattention import backfill
+from newsattention import backfill, lock
 from newsattention.client import Budget, UsageLog, WikimediaClient
 
 DEFAULT_STORE = Path("data/interim/store")
@@ -22,11 +22,28 @@ def yesterday() -> date:
     return datetime.now(timezone.utc).date() - timedelta(days=1)
 
 
+def command_name(args: argparse.Namespace) -> str:
+    func = getattr(args, "func", None)
+    return func.__name__.removeprefix("cmd_").replace("_", "-") if func else "newsattention"
+
+
 def make_client(args: argparse.Namespace) -> WikimediaClient:
-    """A client whose caps count every request in the log since ``--since``."""
+    """A client whose caps count every request in the log since ``--since``.
+
+    It first takes the Wikimedia lock (one command at a time on this machine, whatever the
+    host); a second command refuses with a plain message, or waits with ``--wait``.
+    """
+    try:
+        lock.hold(command_name(args), wait=getattr(args, "wait", False))
+    except lock.CommandBusy as exc:
+        raise SystemExit(str(exc)) from None
     usage = UsageLog(args.log)
     since = args.since or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     caps: dict[str, int] = {"analytics": args.cap_analytics}
+    for family in ("action", "wikidata"):
+        cap = getattr(args, f"cap_{family}", None)
+        if cap is not None:
+            caps[family] = cap
     groups = {"mediawiki": (("action", "wikidata"), args.cap_mediawiki)}
     budget = Budget.from_log(usage.rows(), since, caps, args.max_bytes, groups)
     return WikimediaClient(usage, budget, min_interval=args.min_interval)
@@ -250,6 +267,13 @@ def register(sub: Any) -> None:
         type=int,
         default=10_000,
         help="cap for every /w/api.php request (Wikipedia and Wikidata)",
+    )
+    common.add_argument("--cap-action", type=int, help="cap for Wikipedia /w/api.php requests")
+    common.add_argument("--cap-wikidata", type=int, help="cap for Wikidata requests")
+    common.add_argument(
+        "--wait",
+        action="store_true",
+        help="wait for another newsattention command to finish instead of refusing",
     )
     common.add_argument(
         "--max-bytes", type=int, default=1_000_000_000, help="cap for file downloads (bytes)"
