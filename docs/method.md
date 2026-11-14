@@ -94,7 +94,9 @@ Wikimedia's older method (United States rows until 2023-09-19, and seven rebuilt
 - An earlier event about the same page inside the 28-day window raises the baseline; the
   median limits this but does not remove it.
 
-**Version 1 in numbers** (portal days 2023-02-06 to 2026-11-12, built 2026-11-14).
+**Version 1 in numbers** (portal days 2023-02-06 to 2026-11-12, built 2026-11-14; the
+`country_status` shares and the joined series are from the rebuild of 2026-11-15 with the first
+daily day, 2026-11-13).
 - **Lift.** Of 128,350 English event pages, 10,334 (8%) have a baseline under the floor of 10
   views and no lift. For the others the lift on day 0 has a median of 1.2 (10th to 90th
   percentile 0.85 to 11.2); 30% reach 2 or more and 17% reach 5 or more. Taking each event's
@@ -106,24 +108,28 @@ Wikimedia's older method (United States rows until 2023-09-19, and seven rebuilt
 - **Breadth.** On day 0, the event's link that reaches the most countries has a published row
   in a median of 27 countries (10th to 90th percentile 8 to 58); 21,640 of the 21,821 events
   have at least one such row.
-- **`country_status`** (3,952,208 rows): `not_published` 38.4%, `tracked` 26.3%, `appeared`
-  17.4%, `unclear` 17.1%, `insufficient_files` 0.8%. For English pages created three days
+- **`country_status`** (3,953,727 rows): `not_published` 38.4%, `tracked` 26.3%, `appeared`
+  17.4%, `unclear` 17.1%, `insufficient_files` 0.9%. For English pages created three days
   before the event or later, 84.7% of rows are `appeared` and 0.02% `tracked`, as the
-  definition intends. Every `insufficient_files` row belongs to an event before 2023-02-27,
-  when fewer than 21 baseline days have a country file. A `tracked` row has a day-0 lift with a
+  definition intends. `insufficient_files` covers the events before 2023-02-27, when fewer than
+  21 baseline days have a country file, and the days next to a missing file (below). A `tracked` row has a day-0 lift with a
   median of 1.01 (10th to 90th percentile 0.69 to 2.11).
 - **A day without a file.** When neither day 0 nor day 1 has a row and one of them has no
   country file (the empty file of 2026-11-08, or the newest day, whose next file is not read
   yet), the status is `insufficient_files`, not `not_published`: 3,021 rows of the events of
   2026-11-07, 2026-11-08 and 2026-11-12 in the backfill.
-- **Joined series.** 4,941 English series are joined across the titles of a moved page. Of
-  10,042 move dates with at least 10 views a day on one side, 65% show no jump (the median of
-  the 7 days after within a factor of 5 of the 7 days before; pages that did not move show a
-  jump at the same dates 0.9% of the time). Most jumps have a plain cause: the page was
-  created in the 14 days before the move (2,258) or moved into the articles from a draft
-  (382), so there was no article before. 540 move dates show a level change, down (287) or up
-  (253): views that reach the page through a redirect from its old title are not counted, and
-  a page that takes over a more popular title gains readers looking for that title.
+- **Joined series.** 4,942 English series are joined across the titles of a moved page. Of
+  8,909 old titles, 6,858 now redirect to their page, and their views after the move are added
+  (7,116 calls); 349 lead elsewhere and 332 no longer exist, so they are left out. At each move
+  date with at least 10 views a day on one side (10,142 dates), views over the 7 days after the
+  move were compared with the 7 days before; pages that did not move change by a factor of 5 or
+  more on the same dates 0.9% of the time. 6,816 move dates (67%) show no such jump. Most jumps
+  have a plain cause: the page was created in the 14 days before the move (2,229) or moved into
+  the articles from a draft (384), so there was no article before. Views fell after the move at
+  124 dates, down from 287 before the redirect views were added; most of the rest lead through
+  an old title that is now another page. Views rose at 287 dates: a page that takes over a
+  title that was already a redirect to it gains that title's readers, whose earlier views are
+  not counted.
 
 ## 3. What page views do and do not measure
 Page views measure **information seeking on Wikipedia**: how many times people opened an
