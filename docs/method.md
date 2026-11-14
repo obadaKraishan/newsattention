@@ -95,7 +95,7 @@ Wikimedia's older method (United States rows until 2023-09-19, and seven rebuilt
   median limits this but does not remove it.
 
 **Version 1 in numbers** (portal days 2023-02-06 to 2026-11-12, built 2026-11-14; the
-`country_status` shares and the joined series are from the rebuild of 2026-11-15 with the first
+`country_status` shares and the joined series are from the later rebuild with the first
 daily day, 2026-11-13).
 - **Lift.** Of 128,350 English event pages, 10,334 (8%) have a baseline under the floor of 10
   views and no lift. For the others the lift on day 0 has a median of 1.2 (10th to 90th
