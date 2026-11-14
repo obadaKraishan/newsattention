@@ -29,7 +29,8 @@ All notable changes to this project are documented here. The format follows
   7 and 0 to 28, peak day, half-life (censored), breadth, and `country_status` (tracked,
   appeared, not_published, unclear, insufficient_files).
 - `daily`: yesterday's portal page, due re-reads, new links, the move log, the new country file
-  (missing files retried for a week), and language views for new items and for 7- and 28-day
+  (missing files retried for a week, and a file that comes late filtered when it arrives), and
+  language views for new items and for 7- and 28-day
   follow-ups, one summary line per step.
 - Story links carry their heading level; heading variants map to the ten standard headings;
   currency, unit, ship, magnitude and formula templates are rendered.

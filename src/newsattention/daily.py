@@ -7,8 +7,9 @@ On day T it processes T-1 and the follow-ups that fall due:
 3. ``links``: new linked titles to canonical titles, page ids and Wikidata ids.
 4. ``moves``: the English move log for days not read yet.
 5. ``dp``: the country file for T-1 (a missing length is asked for again once; an empty file
-   is marked missing and tried again on later days for a week); then the rows of linked items,
-   with the last 29 files filtered again when new items appeared, so they get a baseline.
+   is marked missing and tried again on later days for a week); then the rows of linked items
+   in every file of that week not filtered yet, with the last 29 files filtered again when new
+   items appeared, so they get a baseline.
 6. ``api``: for new items, English and up to five other languages over the whole span; for
    items of events that are 7 or 28 days old, a follow-up call from the event day to T-1.
 
@@ -87,7 +88,8 @@ def run_daily(
     retry_from = day - timedelta(days=RETRY_MISSING_DAYS)
     dl = backfill.dp_download(client, store, retry_from, day, say=lambda m: None)
     qids = set(after_items)
-    filt = backfill.dp_filter(store, qids, day, day, say=lambda m: None)
+    # The whole retry window: a file that came late is filtered too (days done are skipped).
+    filt = backfill.dp_filter(store, qids, retry_from, day, say=lambda m: None)
     refilter = {"days": 0, "rows": 0}
     if new_items:
         refilter = backfill.dp_filter(

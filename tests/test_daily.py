@@ -143,3 +143,23 @@ def test_follow_up_updates_only_its_days(tmp_path):
     bank = tables.SeriesBank(date(2025, 1, 1), date(2025, 1, 5))
     bank.load([tmp_path / "chunk-0000000.parquet"], plan)
     assert np.array_equal(bank.series[("Q1", "en.wikipedia")], [5, 0, 0, 9, 0])
+
+
+def test_daily_filters_a_country_file_that_came_late(make_client, tmp_path):
+    store = Store(tmp_path / "store", tmp_path / "raw")
+    late = "2025-03-15"
+
+    def first_pass(method, url, params, headers):
+        if url.startswith("https://analytics.wikimedia.org/") and late in url:
+            return FakeResponse(404, {})
+        return handler(method, url, params, headers)
+
+    client, _ = make_client(first_pass)
+    daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lambda m: None)
+    assert not store.dp_rows(date.fromisoformat(late)).exists()
+    # Later the file is there; the run has no new items, so nothing is filtered again by force.
+    client2, _ = make_client(handler)
+    out = daily.run_daily(client2, store, TODAY, date(2025, 1, 1), say=lambda m: None)
+    assert out["links"]["new_items"] == 0 and out["dp"]["download"]["downloaded"] == 1
+    assert out["dp"]["filter"]["days"] == 1
+    assert pq.read_table(store.dp_rows(date.fromisoformat(late))).num_rows == 2
