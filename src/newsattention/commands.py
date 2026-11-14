@@ -208,6 +208,28 @@ def cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_classes(args: argparse.Namespace) -> int:
+    """Wikidata "instance of" classes of every linked item, with labels and superclasses."""
+    store = store_of(args)
+    qids = set(linked_pages(store))
+    out = backfill.fetch_classes(make_client(args), store, qids, depth=args.depth)
+    _print(out)
+    return 0 if out["stopped"] is None else 1
+
+
+def cmd_old_titles(args: argparse.Namespace) -> int:
+    """Plan the views that reach moved pages through their old titles after each move."""
+    store = store_of(args)
+    path = store.root / "api" / "plan.jsonl"
+    plan = backfill.read_jsonl(path)
+    statuses = backfill.read_jsonl(store.root / "api" / "status.jsonl")
+    covered = backfill.coverage(plan, statuses, backfill.full_span_end(store), SPAN_START)
+    entries, stats = backfill.plan_redirects(make_client(args), store, plan, covered)
+    backfill.append_jsonl(path, entries)
+    _print({**stats, "appended": len(entries), "plan": len(plan) + len(entries)})
+    return 0
+
+
 def cmd_api_backfill(args: argparse.Namespace) -> int:
     store = store_of(args)
     plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
@@ -335,6 +357,15 @@ def register(sub: Any) -> None:
     p.add_argument("--english-only", action="store_true")
     p.add_argument("--force", action="store_true", help="refused: a plan is only appended to")
     p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser(
+        "old-titles", parents=[common], help="plan views through the old titles of moved pages"
+    )
+    p.set_defaults(func=cmd_old_titles)
+
+    p = sub.add_parser("classes", parents=[common], help="Wikidata classes of the linked items")
+    p.add_argument("--depth", type=int, default=3, help="tiers of classes to label")
+    p.set_defaults(func=cmd_classes)
 
     p = sub.add_parser("api-backfill", parents=[common, span], help="fetch the language views")
     p.set_defaults(func=cmd_api_backfill)

@@ -630,6 +630,185 @@ def title_spans(
     return [s for s in spans if s[1] <= s[2]]
 
 
+def fetch_classes(
+    client: WikimediaClient,
+    store: Store,
+    qids: Iterable[str],
+    depth: int = 3,
+    say: Say = print,
+    now: Callable[[], datetime] = utc_now,
+) -> dict[str, Any]:
+    """Each item's "instance of" classes, then the classes' labels and superclasses.
+
+    ``depth`` tiers of classes get a label and their "subclass of" values: the items' own
+    classes, their superclasses and so on. Resumable: each batch of 50 is appended to
+    ``wikidata/instance_of.jsonl`` or ``wikidata/classes.jsonl`` as it comes. When Wikidata
+    stays lagged (``maxlag``) after the client's waits, the step stops and is run again later.
+    """
+    items_path = store.root / "wikidata" / "instance_of.jsonl"
+    classes_path = store.root / "wikidata" / "classes.jsonl"
+    out: dict[str, Any] = {"items_fetched": 0, "classes_fetched": 0, "stopped": None}
+    have = {r["qid"] for r in read_jsonl(items_path)}
+    todo = [q for q in sorted(set(qids)) if q not in have]
+    out["items_wanted"] = len(todo)
+    try:
+        for i in range(0, len(todo), wikidata.BATCH):
+            chunk = todo[i : i + wikidata.BATCH]
+            got = wikidata.instance_of(client, chunk)
+            at = iso(now())
+            rows = [
+                {"qid": q, "instance_of": got.get(q, []), "missing": q not in got, "at": at}
+                for q in chunk
+            ]
+            append_jsonl(items_path, rows)
+            out["items_fetched"] += len(chunk)
+            if (i // wikidata.BATCH) % 40 == 39:
+                say(f"classes: {out['items_fetched']:,} of {len(todo):,} items")
+        known = {r["qid"]: r for r in read_jsonl(classes_path)}
+        tier = {c for r in read_jsonl(items_path) for c in r["instance_of"]}
+        for level in range(depth):
+            wanted = sorted(c for c in tier if c not in known)
+            for i in range(0, len(wanted), wikidata.BATCH):
+                chunk = wanted[i : i + wikidata.BATCH]
+                got_c = wikidata.class_info(client, chunk)
+                at = iso(now())
+                rows = [
+                    {
+                        "qid": c,
+                        "label": got_c.get(c, (None, []))[0],
+                        "subclass_of": got_c.get(c, (None, []))[1],
+                        "level": level,
+                        "at": at,
+                    }
+                    for c in chunk
+                ]
+                append_jsonl(classes_path, rows)
+                known.update({r["qid"]: r for r in rows})
+                out["classes_fetched"] += len(chunk)
+            tier = {s for c in tier if c in known for s in known[c]["subclass_of"]}
+    except (CallCapReached, SourceBlocked, RuntimeError) as exc:
+        out["stopped"] = str(exc)
+        say(f"classes: stopped ({exc}); run the command again later to go on")
+    say(f"classes: {out['items_fetched']:,} items and {out['classes_fetched']:,} classes fetched")
+    return out
+
+
+def load_classes(store: Store) -> tuple[dict[str, list[str]], dict[str, dict[str, Any]]]:
+    """``(item -> its classes, class -> {label, subclass_of})`` from the store."""
+    items = {
+        r["qid"]: r["instance_of"]
+        for r in read_jsonl(store.root / "wikidata" / "instance_of.jsonl")
+    }
+    classes = {r["qid"]: r for r in read_jsonl(store.root / "wikidata" / "classes.jsonl")}
+    return items, classes
+
+
+def redirect_periods(own: list[tuple[date, date]], end: date) -> list[tuple[date, date]]:
+    """The days after a title stopped being the page's own title, up to ``end``.
+
+    ``own`` are the spans in which the page had that title (the day of a move belongs to both
+    titles). The title counts as a redirect from the day after each own span to the day before
+    the next one, and after the last one up to ``end``.
+    """
+    out = []
+    spans = sorted(own)
+    for k, (_, last) in enumerate(spans):
+        first_free = last + timedelta(days=1)
+        stop = spans[k + 1][0] - timedelta(days=1) if k + 1 < len(spans) else end
+        if first_free <= stop:
+            out.append((first_free, stop))
+    return out
+
+
+def plan_redirects(
+    client: WikimediaClient,
+    store: Store,
+    plan: list[dict[str, Any]],
+    covered: dict[tuple[str, str], tuple[date, date]],
+    say: Say = print,
+    now: Callable[[], datetime] = utc_now,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Calls for the views that reach a moved page through its old titles after each move.
+
+    Each old title is looked up on Wikipedia as it is now (``pages/old_title_targets.jsonl``,
+    append-only). Only a title that now redirects to the same page gets calls, for the days
+    after the page left it, up to the last day of the page's own series: a title that became
+    another article or a disambiguation page, or that no longer exists, is left out, since
+    its later views are not this page's.
+    """
+    cache_path = store.root / "pages" / "old_title_targets.jsonl"
+    cache = {r["title"]: r for r in read_jsonl(cache_path)}
+    own: dict[tuple[str, int], dict[str, list[tuple[date, date]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    current: dict[tuple[str, int], str] = {}
+    meta: dict[tuple[str, int], dict[str, Any]] = {}
+    for item in plan:
+        if item["project"] != EN or item.get("page_id") is None:
+            continue
+        key = (item["qid"], item["page_id"])
+        if item["kind"] == "old_title":
+            span = (date.fromisoformat(item["span_start"]), date.fromisoformat(item["span_end"]))
+            own[key][item["title"]].append(span)
+            meta[key] = item
+        elif item["kind"] == "current" and not item.get("span_start"):
+            current[key] = item["title"]
+    titles = sorted({t for spans in own.values() for t in spans} - set(cache))
+    found = wikidata.resolve_titles(client, titles, EN) if titles else {}
+    at = iso(now())
+    rows = [
+        {
+            "title": t,
+            "page_id": found[t].page_id if t in found else None,
+            "redirected": found[t].redirected if t in found else False,
+            "at": at,
+        }
+        for t in titles
+    ]
+    if rows:
+        append_jsonl(cache_path, rows)
+        cache.update({r["title"]: r for r in rows})
+    stats = {"pages": len(own), "old_titles": 0, "redirect_here": 0, "elsewhere": 0, "gone": 0}
+    have = {(e["qid"], e["title"], e["kind"], e.get("span_start")) for e in plan}
+    entries: list[dict[str, Any]] = []
+    for key, by_title in sorted(own.items()):
+        qid, page_id = key
+        span = covered.get((qid, EN))
+        if span is None:
+            continue
+        for title, spans in sorted(by_title.items()):
+            stats["old_titles"] += 1
+            target = cache.get(title, {})
+            if title == current.get(key):
+                continue  # the page has this title again now
+            if target.get("page_id") is None:
+                stats["gone"] += 1
+                continue
+            if target["page_id"] != page_id or not target.get("redirected"):
+                stats["elsewhere"] += 1
+                continue
+            stats["redirect_here"] += 1
+            for first, last in redirect_periods(spans, span[1]):
+                if (qid, title, "redirect", first.isoformat()) in have:
+                    continue
+                entries.append(
+                    {
+                        **{k: meta[key][k] for k in ("qid", "project", "page_id", "rank")},
+                        "title": title,
+                        "kind": "redirect",
+                        "span_start": first.isoformat(),
+                        "span_end": last.isoformat(),
+                    }
+                )
+    stats["calls"] = len(entries)
+    say(
+        f"redirects: {stats['old_titles']:,} old titles of {stats['pages']:,} pages; "
+        f"{stats['redirect_here']:,} redirect to their page now, {stats['elsewhere']:,} lead "
+        f"elsewhere, {stats['gone']:,} are gone; {stats['calls']:,} calls planned"
+    )
+    return entries, stats
+
+
 # 4. Country files --------------------------------------------------------------------------
 
 

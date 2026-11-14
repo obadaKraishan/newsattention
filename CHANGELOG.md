@@ -22,6 +22,13 @@ All notable changes to this project are documented here. The format follows
 - `country_status`: when neither day 0 nor day 1 has a row and one of them has no country file,
   the status is `insufficient_files`, not `not_published`.
 - The `pages` table lists only articles that a current event links.
+- `classes`: the Wikidata "instance of" classes of every linked item, and for three tiers of
+  classes their English label and "subclass of" values, in batches of 50; resumable, and it
+  stops rather than pushes when Wikidata stays lagged.
+- `old-titles`: plans the views that reach a moved page through its old titles after each move,
+  for old titles that now redirect to the same page (a title that became another article is
+  left out). The series add those views, a later call replacing the days it asked for, and
+  `daily` follows them up with their page.
 - Backfill commands, each resumable: `portal-backfill` and `reread` (each day read again 7
   and 30 days after it ends; a changed revision replaces the day's events and every read
   stays on record), `reparse` and `parse-report` (what the parser could not read, by month),

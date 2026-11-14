@@ -160,3 +160,61 @@ def titles_for_page_ids(
                 continue
             out[page["pageid"]] = (page["title"], page.get("pageprops", {}).get("wikibase_item"))
     return out
+
+
+def _truthy(claims: list[dict[str, object]]) -> list[str]:
+    """Item ids of a property's values as Wikidata's "truthy" view gives them.
+
+    Preferred values when there are any, else normal ones; deprecated values never.
+    """
+    by_rank: dict[str, list[str]] = {"preferred": [], "normal": []}
+    for claim in claims:
+        rank = str(claim.get("rank", "normal"))
+        snak = claim.get("mainsnak", {})
+        value = snak.get("datavalue", {}).get("value") if isinstance(snak, dict) else None
+        if rank in by_rank and isinstance(value, dict) and isinstance(value.get("id"), str):
+            by_rank[rank].append(value["id"])
+    chosen = by_rank["preferred"] or by_rank["normal"]
+    return list(dict.fromkeys(chosen))
+
+
+def instance_of(client: WikimediaClient, qids: Iterable[str]) -> dict[str, list[str]]:
+    """The "instance of" (P31) values of each item, in batches of 50 (``wbgetentities``).
+
+    An item Wikidata no longer has (deleted or merged away) is left out.
+    """
+    out: dict[str, list[str]] = {}
+    for chunk in _batches(list(dict.fromkeys(qids))):
+        data = client.action_api(
+            WIKIDATA_API,
+            {"action": "wbgetentities", "ids": "|".join(chunk), "props": "claims"},
+        )
+        for qid, entity in data.get("entities", {}).items():
+            if "missing" in entity:
+                continue
+            # A merged item answers under its new id; it is kept under the id asked for.
+            out[qid] = _truthy(entity.get("claims", {}).get("P31", []))
+    return out
+
+
+def class_info(
+    client: WikimediaClient, class_ids: Iterable[str]
+) -> dict[str, tuple[str | None, list[str]]]:
+    """For each class, its English label and its "subclass of" (P279) values, 50 at a time."""
+    out: dict[str, tuple[str | None, list[str]]] = {}
+    for chunk in _batches(list(dict.fromkeys(class_ids))):
+        data = client.action_api(
+            WIKIDATA_API,
+            {
+                "action": "wbgetentities",
+                "ids": "|".join(chunk),
+                "props": "labels|claims",
+                "languages": "en",
+            },
+        )
+        for cid, entity in data.get("entities", {}).items():
+            if "missing" in entity:
+                continue
+            label = entity.get("labels", {}).get("en", {}).get("value")
+            out[cid] = (label, _truthy(entity.get("claims", {}).get("P279", [])))
+    return out
