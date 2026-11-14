@@ -1,8 +1,9 @@
 # Method
 
-**The measures in section 2 are accepted. The rule for the event's own article (section 4) is
-still a DRAFT.** Numbers marked "prototype" come from a 28-day sample (portal days 2026-10-16
-to 2026-11-12); numbers marked "version 1" come from the backfill from 2023-02-06.
+**The measures in section 2 are accepted. The roles of linked pages (section 4) are still a
+DRAFT until the hand check is scored.** Numbers marked "prototype" come from a 28-day sample
+(portal days 2026-10-16 to 2026-11-12); numbers marked "version 1" come from the backfill from
+2023-02-06.
 
 ## 1. Units
 - **Event:** one bullet on an English Current Events Portal day page that reports something
@@ -48,9 +49,9 @@ published row from day -28 to day 1:
 |---|---|
 | `tracked` | A published row on at least 21 of the 28 baseline days. The lift on day 0 uses the median of the published baseline days only, and the number of those days is reported |
 | `appeared` | Published on day 0 or day 1, and on at most 2 of the 28 baseline days |
-| `not_published` | No row on day 0 or day 1 (and not tracked) |
+| `not_published` | No row on day 0 or day 1, and both days have a country file (and not tracked) |
 | `unclear` | Everything else (published on day 0 or 1 and on 3 to 20 baseline days) |
-| `insufficient_files` | Fewer than 21 of the baseline days, or neither day 0 nor day 1, have a country file at all, so the status cannot be decided |
+| `insufficient_files` | Fewer than 21 of the baseline days, or neither day 0 nor day 1, have a country file at all; or neither day has a row and one of them has no file. The status cannot be decided |
 
 `appeared` means that the country's count **rose above the publication threshold**, not that it
 started from nothing: below the threshold the count is unknown, not zero. A `tracked` country
@@ -79,7 +80,15 @@ Wikimedia's older method (United States rows until 2023-09-19, and seven rebuilt
 - The Analytics API counts views of a page under its title; views of redirects to it are not
   included. For English pages that moved inside the span, the old titles are fetched too and
   the series are joined at the move dates (the day of a move adds both titles); joined series
-  are flagged. Moves in other language editions are not followed yet.
+  are flagged. After a move, an old title that now redirects to the same page is fetched for
+  the days after the move too, and its views (readers who arrive through the old title) are
+  added. An old title that became another article, a disambiguation page or nothing is left
+  out, since its later views are not this page's. Moves in other language editions are not
+  followed yet.
+- Each series has a first and a last day fetched (the `series` table). After the backfill,
+  `daily` extends the English series of an event's links at 7 and 28 days; other language
+  editions keep the backfill's last day. The measures stop at a series' last day and never
+  read an unfetched day as zero.
 - A page created on or just before the event day has no baseline; its lift is undefined and
   its views are the signal (this is also what marks it as the event's own article).
 - An earlier event about the same page inside the 28-day window raises the baseline; the
@@ -103,10 +112,10 @@ Wikimedia's older method (United States rows until 2023-09-19, and seven rebuilt
   definition intends. Every `insufficient_files` row belongs to an event before 2023-02-27,
   when fewer than 21 baseline days have a country file. A `tracked` row has a day-0 lift with a
   median of 1.01 (10th to 90th percentile 0.69 to 2.11).
-- **Day 1 without a file.** When day 1 has no country file (2026-11-08 was empty; the newest
-  day's next file is not read yet) and day 0 has no row, the rule above gives
-  `not_published`, although day 1 is unknown. This affects 1,768 rows (events of 2026-11-07
-  and 2026-11-12); the newest day's rows are corrected when its next file is read.
+- **A day without a file.** When neither day 0 nor day 1 has a row and one of them has no
+  country file (the empty file of 2026-11-08, or the newest day, whose next file is not read
+  yet), the status is `insufficient_files`, not `not_published`: 3,021 rows of the events of
+  2026-11-07, 2026-11-08 and 2026-11-12 in the backfill.
 - **Joined series.** 4,941 English series are joined across the titles of a moved page. Of
   10,042 move dates with at least 10 views a day on one side, 65% show no jump (the median of
   the 7 days after within a factor of 5 of the 7 days before; pages that did not move show a
@@ -150,29 +159,52 @@ language, age and access to the internet, so a low count can mean little interes
 use of Wikipedia. Bots that pass as human readers are filtered by Wikimedia's heuristics but
 not perfectly.
 
-## 4. The event's own article (to be validated)
-Most links point to general pages. A first rule marks a linked page as the event's own article
-when **it is new** (at least 14 of the 28 baseline days have zero views) **or its title holds a
-year and its views on the event day or the day after are at least five times its baseline**.
-In the prototype the rule flags 241 of 3,107 English links (7.8%), so about 92% of links are
-general pages, and 174 of 487 events (36%) have at least one flagged link. A reading check of
-30 random events found that 9 of them link an article about the event itself (9 of their 183
-links, 4.9%). The rule found the right page in 7 of those 9 events, flagged 4 events that have
-no such article, and was right about 24 of the 30 events. Its errors point to the next rule:
+## 4. The role of each linked page (DRAFT until the hand check is scored)
+Most links point to general pages. Every linked page of every event gets one role, by a rule
+that reads only stored signals (no model), with a confidence:
 
-- **Story articles with a year in the title** ("2026 ... civil unrest", "... involvement in
-  the 2026 ... war", a year overview) also jump; the event's own article is usually the
-  *nearest* story heading or the most specific page.
-- **Pages renamed recently** have almost no views under their new title, so they look new
-  (the Analytics API counts views by title). Page moves need to be detected (the page's
-  creation date or move log, or its Wikidata id, which is far older than a new item's).
-- **New pages about people or companies** created because of the event are new but are not
-  the event. Wikidata's "instance of" property can tell an event (an election, a strike, an
-  attack) from a person or a company.
-- **Own articles without a year in the title** (named incidents) are missed.
+- `event`: the article about this specific happening (at most one per event);
+- `story`: an article about the larger ongoing story the event is one development of;
+- `context`: anything else, such as a country, a person, an organization or a general topic.
 
-A later stage will validate a refined rule on a larger sample; a language model is considered
-only if rules fall short.
+**Signals**, for one event and one linked page:
+
+| Signal | Meaning |
+|---|---|
+| new | The page was created in the 14 days before the event or later, or moved into the articles (from a draft) within 14 days of the event |
+| event class / context class | The page's Wikidata "instance of" class, judged by the head word of the class's English label: "mass shooting" (shooting) names a happening, "city in Fakeland" (city) names a place. The item's own classes decide; when none of their head words is known, their superclasses decide, then the superclasses of those. A happening wins a tie |
+| year | The title holds the event's year (or a season such as 2025-26 that spans it) |
+| words | The title shares a word of four letters or more with the event's text, and has more than that word |
+| jump | Views on day 0 or day 1 at least 5 times the baseline; or, without a baseline of 10 views, a peak of at least 500 views by day 3 |
+| in text | The event's own text links the page, not a story heading above it |
+
+**The rule** (version 1, `newsattention.roles`):
+
+1. A page with a context class is `context`.
+2. A page that the event's text links can be the `event` page when it is new, or has an event
+   class and the event's year, or has the year, shared words and a jump. Of several, the one
+   with the most signals wins (new counts twice), then the earlier link.
+3. Every other page that a story heading links, or that has an event class and is not new, is
+   `story`. The event's main story is the one under the nearest heading.
+4. The rest is `context`.
+
+**Confidence** counts the signals that agree with the role. For `event`: new (counted twice),
+event class, year, words and jump; 4 or more is `high`, 3 `medium`, fewer `low`. For `story`:
+a story heading, the nearest heading, an event class, and a page older than 30 days; 3 or more
+`high`, 2 `medium`, fewer `low`. For `context`: a context class is `high`, an old page without
+an event class `medium`, anything else `low`.
+
+The S1 prototype's reading check (30 events) found that most links are general pages, that
+story articles with a year in the title also jump, that renamed pages look new, and that new
+articles about people or companies are not the event. Version 1 answers these with the story
+heading, the moves into the articles, and the Wikidata class.
+
+**Validation.** A seeded sample of 150 events (spread evenly over 2023 to 2026, half where
+the rule finds an `event` page) is checked by hand, blind to the rule, against two questions:
+which link is the article about the event itself, and which is the article about the larger
+story. The rule is fixed before the sample is drawn and is not changed on the sampled events.
+With 150 events the 95% interval around an accuracy of 90% is about ±5 points. Until the sheets
+are scored, the roles stay DRAFT.
 
 ## 5. Known gaps
 - **Events with no article.** Some events link only to general pages; their attention is only

@@ -7,9 +7,10 @@ configuration, stored as Parquet files by month.
 | Configuration | Files | One row per | License |
 |---|---|---|---|
 | `events` | `events/YYYY-MM.parquet` | event | **CC BY-SA 4.0**, credited to Wikipedia contributors with the portal page and revision id of each event |
-| `event_pages` | `event_pages/YYYY-MM.parquet` (by the event's month) | event and linked article | CC0 1.0 |
+| `event_pages` | `event_pages/YYYY-MM.parquet` (by the event's month) | event and linked article, with its `role` (`event`, `story` or `context`) and `role_confidence` (`high`, `medium`, `low`) from the rule in the method (DRAFT until the hand check is scored) | CC0 1.0 |
 | `pages` | `pages.parquet` | linked English article (creation estimate, moves) | CC0 1.0 |
-| `views_api` | `views_api/YYYY-MM.parquet` | item, language and day (days without a row are 0) | CC0 1.0 |
+| `views_api` | `views_api/YYYY-MM.parquet` | item, language and day (inside a series' fetched days, a day without a row had no views) | CC0 1.0 |
+| `series` | `series.parquet` | item and language: the first and last day fetched, and whether older titles are joined in | CC0 1.0 |
 | `views_dp` | `views_dp/YYYY-MM.parquet` | item, language, country and day, as published by Wikimedia | CC0 1.0 |
 | `attention` | `attention/YYYY-MM.parquet` (by the event's month) | event, item, language and day 0 to 28 | CC0 1.0 |
 | `attention_summary` | `attention_summary/YYYY-MM.parquet` | event, item and language: the measures | CC0 1.0 |
@@ -35,6 +36,8 @@ configs:
     data_files: "pages.parquet"
   - config_name: views_api
     data_files: "views_api/*.parquet"
+  - config_name: series
+    data_files: "series.parquet"
   - config_name: views_dp
     data_files: "views_dp/*.parquet"
   - config_name: attention
