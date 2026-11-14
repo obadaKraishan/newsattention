@@ -316,6 +316,17 @@ def test_review_sheets_command_writes_blind_sheets_and_a_separate_key(tmp_path, 
     argv += ["--tables", str(out), "--out", str(sheets), "--key", str(key)]
     assert cli.main(argv) == 0
     assert sorted(p.name for p in sheets.iterdir()) == ["guide.md", "sheet-1.xlsx"]
+    roles_argv = [
+        "roles",
+        "--store",
+        str(store.root),
+        "--raw",
+        str(store.raw),
+        "--tables",
+        str(out),
+    ]
+    assert cli.main(roles_argv) == 0
+    assert (out / "roles_summary.json").exists()
     entry = json.loads(key.read_text())["events"][0]
     assert entry["sheet"] == "sheet-1.xlsx" and entry["Q1"] in ("none", 1, 2)
     check = review.check_sheet(sheets / "sheet-1.xlsx")

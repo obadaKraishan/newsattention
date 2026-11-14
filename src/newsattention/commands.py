@@ -230,6 +230,14 @@ def cmd_old_titles(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_roles(args: argparse.Namespace) -> int:
+    """Give the event pages of built tables their roles again (after new Wikidata classes)."""
+    from newsattention import tables
+
+    _print(tables.build_roles(store_of(args), args.tables))
+    return 0
+
+
 def cmd_review_sheets(args: argparse.Namespace) -> int:
     """Draw the hand-checked sample and write the blind review sheets and the answer key."""
     from newsattention import review, roles, tables
@@ -458,6 +466,10 @@ def register(sub: Any) -> None:
     p.add_argument("--english-only", action="store_true")
     p.add_argument("--force", action="store_true", help="refused: a plan is only appended to")
     p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("roles", parents=[common], help="give event pages their roles again")
+    p.add_argument("--tables", type=Path, default=Path("data/interim/tables"))
+    p.set_defaults(func=cmd_roles)
 
     p = sub.add_parser("review-sheets", parents=[common], help="draw the sample and write sheets")
     p.add_argument("--tables", type=Path, default=Path("data/interim/tables"))
