@@ -210,3 +210,20 @@ def test_daily_filters_a_country_file_that_came_late(make_client, tmp_path):
     assert out["links"]["new_items"] == 0 and out["dp"]["download"]["downloaded"] == 1
     assert out["dp"]["filter"]["days"] == 1
     assert pq.read_table(store.dp_rows(date.fromisoformat(late))).num_rows == 2
+
+
+def test_daily_follows_up_redirect_titles_with_their_page(make_client, tmp_path):
+    store = _store_with_q1(tmp_path, [OLD_DAY], OLD_DAY)
+    redirect = {"qid": "Q1", "project": "en.wikipedia", "title": "Old Fakeland", "page_id": 100}
+    redirect |= {"rank": 0, "kind": "redirect", "span_start": "2025-02-01"}
+    backfill.append_jsonl(
+        store.root / "api" / "plan.jsonl", [redirect | {"span_end": "2025-03-12"}]
+    )
+    client, _ = make_client(handler)
+    daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lambda m: None)
+    plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
+    new = [(p["title"], p["kind"], p["span_start"]) for p in plan[2:] if p["qid"] == "Q1"]
+    assert new == [
+        ("Fakeland", "current", "2025-03-11"),
+        ("Old Fakeland", "redirect", "2025-03-11"),
+    ]

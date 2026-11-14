@@ -194,6 +194,29 @@ def run_daily(
                 "span_end": day.isoformat(),
             }
         )
+    # Old titles that redirect to a followed page get the same days (see plan_redirects).
+    since: dict[tuple[str, str], tuple[date, dict[str, Any]]] = {}
+    for e in existing:
+        if e.get("kind") == "redirect":
+            k = (e["qid"], e["title"])
+            start_e = date.fromisoformat(e["span_start"])
+            if k not in since or start_e < since[k][0]:
+                since[k] = (start_e, e)
+    followed = {
+        e["qid"]: date.fromisoformat(e["span_start"]) for e in entries if e.get("follow_up")
+    }
+    for (qid, title), (start_r, e) in sorted(since.items()):
+        if qid in followed:
+            entries.append(
+                {
+                    **{k: e[k] for k in ("qid", "project", "page_id", "rank")},
+                    "title": title,
+                    "kind": "redirect",
+                    "follow_up": True,
+                    "span_start": max(followed[qid], start_r).isoformat(),
+                    "span_end": day.isoformat(),
+                }
+            )
     backfill.append_jsonl(plan_path, entries)
     full = existing + entries
     api = backfill.api_backfill(client, store, full, span_start, day, say=lambda m: None)

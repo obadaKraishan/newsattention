@@ -243,6 +243,9 @@ class SeriesBank:
         """Read the raw chunks; ``covered`` (from :func:`backfill.coverage`) bounds each series."""
         self.covered = dict(covered or {})
         old: dict[tuple[str, str], list[tuple[int, int, np.ndarray]]] = defaultdict(list)
+        # Views through a title that now redirects to the page, per (series, title); a later
+        # call replaces the days it asked for, so overlapping calls never count a day twice.
+        redirects: dict[tuple[tuple[str, str], str], np.ndarray] = {}
         for path in chunks:
             table = pq.read_table(path)
             if table.num_rows == 0:
@@ -260,6 +263,13 @@ class SeriesBank:
                     first = self.index(date.fromisoformat(item["span_start"]))
                     last = self.index(date.fromisoformat(item["span_end"]))
                     old[key].append((first, last, arr))
+                elif item["kind"] == "redirect":
+                    first = self.index(date.fromisoformat(item["span_start"]))
+                    last = self.index(date.fromisoformat(item["span_end"]))
+                    red = redirects.setdefault(
+                        (key, item["title"]), np.zeros(self.n, dtype=np.int64)
+                    )
+                    red[first : last + 1] = arr[first : last + 1]
                 elif item.get("span_start") and key in self.series:
                     # A follow-up call: it updates only the days it asked for.
                     first = self.index(date.fromisoformat(item["span_start"]))
@@ -278,6 +288,10 @@ class SeriesBank:
             joined[first_current:] += cur[first_current:]
             self.series[key] = joined
             self.joined.add(key)
+        for (key, _title), red in sorted(redirects.items()):
+            if key in self.series:
+                self.series[key] = self.series[key] + red
+                self.joined.add(key)
 
     def as_dict(self, key: tuple[str, str], last: date) -> dict[date, int]:
         arr = self.series[key]
