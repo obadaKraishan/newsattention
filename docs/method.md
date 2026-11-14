@@ -85,6 +85,37 @@ Wikimedia's older method (United States rows until 2023-09-19, and seven rebuilt
 - An earlier event about the same page inside the 28-day window raises the baseline; the
   median limits this but does not remove it.
 
+**Version 1 in numbers** (portal days 2023-02-06 to 2026-11-12, built 2026-11-14).
+- **Lift.** Of 128,350 English event pages, 10,334 (8%) have a baseline under the floor of 10
+  views and no lift. For the others the lift on day 0 has a median of 1.2 (10th to 90th
+  percentile 0.85 to 11.2); 30% reach 2 or more and 17% reach 5 or more. Taking each event's
+  highest lift on day 0 or day 1 over its English links (0 when none has a baseline), the
+  median is 6.9, and 17,393 of the 21,814 events with an English link reach 2 or more.
+- **Peak and half-life.** 30,144 English event pages peak on day 0 and 29,234 on day 1. The
+  half-life has a median of 2 days (90th percentile 9) where it is observed, and is censored
+  for 33% of event pages (no fall below half the peak by day 28 or by the last day of data).
+- **Breadth.** On day 0, the event's link that reaches the most countries has a published row
+  in a median of 27 countries (10th to 90th percentile 8 to 58); 21,640 of the 21,821 events
+  have at least one such row.
+- **`country_status`** (3,952,208 rows): `not_published` 38.4%, `tracked` 26.3%, `appeared`
+  17.4%, `unclear` 17.1%, `insufficient_files` 0.8%. For English pages created three days
+  before the event or later, 84.7% of rows are `appeared` and 0.02% `tracked`, as the
+  definition intends. Every `insufficient_files` row belongs to an event before 2023-02-27,
+  when fewer than 21 baseline days have a country file. A `tracked` row has a day-0 lift with a
+  median of 1.01 (10th to 90th percentile 0.69 to 2.11).
+- **Day 1 without a file.** When day 1 has no country file (2026-11-08 was empty; the newest
+  day's next file is not read yet) and day 0 has no row, the rule above gives
+  `not_published`, although day 1 is unknown. This affects 1,768 rows (events of 2026-11-07
+  and 2026-11-12); the newest day's rows are corrected when its next file is read.
+- **Joined series.** 4,941 English series are joined across the titles of a moved page. Of
+  10,042 move dates with at least 10 views a day on one side, 65% show no jump (the median of
+  the 7 days after within a factor of 5 of the 7 days before; pages that did not move show a
+  jump at the same dates 0.9% of the time). Most jumps have a plain cause: the page was
+  created in the 14 days before the move (2,258) or moved into the articles from a draft
+  (382), so there was no article before. 540 move dates show a level change, down (287) or up
+  (253): views that reach the page through a redirect from its old title are not counted, and
+  a page that takes over a more popular title gains readers looking for that title.
+
 ## 3. What page views do and do not measure
 Page views measure **information seeking on Wikipedia**: how many times people opened an
 article. Research has used them as a measure of public attention and interest and has

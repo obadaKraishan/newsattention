@@ -25,6 +25,15 @@ Primary pages: [access policy](https://doc.wikimedia.org/generated-data-platform
   experimentation and change." In the prototype the API answered 429 about twice a minute at
   about 200 requests a minute; NewsAttention now spaces requests 0.35 s apart (about 170 a
   minute).
+- **What the backfill saw (2026-11-13 to 2026-11-14).** 122,945 per-article requests for
+  1,404-day ranges, one at a time. Spaced 0.8 s apart (75 a minute), the language-view run made
+  118,113 calls in 26.6 hours without a single 429. All 41 answers of 429 came in one hour,
+  16:03 to 17:01 UTC on 2026-11-13, while three commands ran at once against three hosts (the
+  Action API at about 170 requests a minute, the country files at about 90, this API at about
+  100; up to 372 a minute in all). In that hour the Action API and this API answered 429 within
+  a second of each other, about once a minute, which suggests a limit shared by all Wikimedia
+  hosts for one client rather than one limit per host. The daily command therefore runs its
+  steps one after another in one process.
 
 **The three endpoints that matter here** (from the specification):
 
@@ -99,9 +108,11 @@ Primary pages: [current README](https://analytics.wikimedia.org/published/datase
   363,538 a day); 161 to 228 country codes a file (median 187).
 - **Two pages, one item.** One Wikidata item can appear with two page ids in the same
   language, country and day (up to about 1% of a month's rows of linked items in late 2026), for
-  example a page and a redirect linked to the same item. In the listing
-  those seven files are about 6 MB, against 20 to 26 MB for normal days. The file for
-  **2026-11-08 is empty** (0 bytes, posted 2026-11-09 02:39).
+  example a page and a redirect linked to the same item. NewsAttention keeps the larger
+  published count of the two (the main page), never their sum.
+- **Small and empty files.** In the listing the seven rebuilt files are about 6 MB, against 20
+  to 26 MB for normal days. The file for **2026-11-08 is empty** (0 bytes, posted 2026-11-09
+  02:39); it is marked missing, and the daily command asks for it again for a week.
 - **Bots.** "From 25 May 2023 on, a more aggressive filter was used to only retrieve
   human-contributed views, not bot/web indexer views. Data before this date may contain
   bot-influenced counts." Also: "Data from 6 Feb 2023 may be incomplete".

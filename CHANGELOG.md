@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
   English move log), `dp-download` and `dp-filter` (the country files, with the documented
   gaps and each day's smallest count per country recorded), `plan` (append-only) and
   `api-backfill` (raw chunks of 250 calls).
+- Docs: the data card and the method carry the numbers of version 1 as built (portal days
+  2023-02-06 to 2026-11-12); the sources page records the request rates the backfill met.
 - `api-check`: checks, without a request, that every planned language-view call has its saved
   result: each chunk is read in full and compared with the plan and the status log (row count,
   identity, dates inside the span, no day twice), and the indices to fetch again are listed.

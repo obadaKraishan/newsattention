@@ -1,6 +1,8 @@
-# Data card (skeleton)
+# Data card (draft)
 
-**SKELETON: nothing has been released.** Sections marked "to fill" are completed at release.
+**DRAFT: nothing has been released.** The numbers below describe version 1 as built on
+2026-11-14 (portal days 2023-02-06 to 2026-11-12); sections marked "to fill" are completed at
+release.
 
 ## Summary
 NewsAttention links each day's news events, as listed on English Wikipedia's Current Events
@@ -12,8 +14,8 @@ baseline before the event, the lift over it, the peak day, a half-life and bread
 - **Curated by:** Obada Kraishan (College of Media and Communication, Texas Tech University)
 - **Funded by:** no external funding
 - **Languages:** event text in English; page views in every Wikipedia language edition
-- **License:** see [licenses](licenses.md) (the proposed split: counts and links CC0 1.0,
-  event text CC BY-SA 4.0 with credit)
+- **License:** see [licenses](licenses.md): counts and links CC0 1.0, event text CC BY-SA 4.0
+  with credit (one license per table, listed in the [release layout](release-layout.md))
 - **Repository:** <https://github.com/obadaKraishan/newsattention>
 - **Dataset:** Hugging Face `obadakr/newsattention` (to fill), Kaggle mirror (to fill), Zenodo
   DOI (to fill)
@@ -27,12 +29,18 @@ baseline before the event, the lift over it, the peak day, a half-life and bread
   countries or peoples by "interest" without the caveats below.
 
 ## Structure
-| Table | One row per | Key | Source |
-|---|---|---|---|
-| `events` | event on a portal day page | `event_id` | Current Events Portal (CC BY-SA 4.0 text) |
-| `event_pages` | link from an event to an article | `event_id`, `link_order` | portal links, resolved through the Wikipedia API |
-| `views` | article × day × (all countries or one country) | `date`, `qid`, `project`, `country`, `source` | Analytics API (`api`, exact) or DP files (`dp`, noisy) |
-| `attention` | event × article × language or country × day | `event_id`, `qid`, `project`, `country`, `date`, `source` | derived |
+Each table is a set of Parquet files, one per month.
+
+| Table | One row per | Source |
+|---|---|---|
+| `events` | event on a portal day page | Current Events Portal (CC BY-SA 4.0 text) |
+| `event_pages` | link from an event to an article | portal links, resolved through the Wikipedia API |
+| `pages` | linked English article: creation estimate, moves in the span | MediaWiki API (page ids, first revisions, move log) |
+| `views_api` | item, language and day (days without a row are 0) | Analytics API, exact |
+| `views_dp` | item, language, country and day, as published | differentially private files, noisy |
+| `attention` | event, item, language and day 0 to 28 | derived |
+| `attention_summary` | event, item and language: the measures | derived |
+| `country_status` | event, item, language and country | derived from `views_dp` |
 
 Field definitions are in `src/newsattention/schema.py`; `newsattention validate FILE` checks a
 file against them.
@@ -48,9 +56,30 @@ file against them.
 - **Provenance:** every row is computed by code from the sources; no row is written or edited
   by hand, and no language model is used (to fill if one is added: model name and license).
 
-## Size (to fill at release)
-Events per day, links per event, rows per table, bytes per month. A 28-day prototype
-(2026-10-16 to 2026-11-12) had about 17 events a day and 6.4 links per event.
+## Size
+Version 1 as built on 2026-11-14 (portal days 2023-02-06 to 2026-11-12, views from 2023-01-09):
+
+- 1,376 portal day pages, **21,821 events** (median 15 a day, from 8 to 25 for the middle 80%
+  of days; 391 a month in 2023, 613 a month in 2026), with a median of 6 links each.
+- **33,417 linked items** (Wikidata ids) behind 37,265 linked titles; 4,945 of their English
+  pages were moved inside the span.
+- Language views: 112,530 series (English and up to five other languages per item, 198
+  languages in all); country views: the rows of linked items in 1,375 daily files.
+
+| Table | Rows | Size (Parquet, zstd) |
+|---|---:|---:|
+| `events` | 21,821 | 2.4 MB |
+| `event_pages` | 128,516 | 2.4 MB |
+| `pages` | 33,425 | 1.0 MB |
+| `views_api` | 141,098,686 | 234.5 MB |
+| `views_dp` | 58,345,138 | 353.2 MB |
+| `attention` | 17,066,406 | 109.8 MB |
+| `attention_summary` | 595,301 | 17.7 MB |
+| `country_status` | 3,952,208 | 22.9 MB |
+| **all** | | **743.9 MB** |
+
+The sources behind it are about 32.6 GB: 32.2 GB of country files, 0.29 GB of Analytics API
+answers kept as Parquet, 0.14 GB of move log and 10 MB of portal pages.
 
 ## Bias, risks and limits
 - Page views are reading on Wikipedia, not all public attention; Wikipedia's reach differs by
@@ -62,9 +91,14 @@ Events per day, links per event, rows per table, bytes per month. A 28-day proto
   English-language news.
 - Most links point to general pages (a country, a party); which page is the event's own
   article is decided by a rule, with a known error rate (to fill).
-- Known gaps in the country files: no United States rows from 2023-02-06 to 2023-09-19; seven
-  days in 2023 rebuilt with the older method; countries of medium and higher risk only from
-  2024-02-15; an empty file for 2026-11-08 (as of 2026-11-13).
+- Known gaps in the country files: United States rows from 2023-02-06 to 2023-09-19 come from
+  Wikimedia's older method (threshold 450), as do every country's rows on seven days of 2023;
+  countries of medium and higher risk only from 2024-02-15; an empty file for 2026-11-08 (as
+  of 2026-11-13). Events before 2023-02-27 have too few baseline days with a file for a
+  country status (`insufficient_files`).
+- Moved pages: English series are joined across the page's titles at the move dates, but
+  views that reach a page through a redirect from its old title are not counted, so a series
+  can drop for some days after a move.
 
 ## Ethics
 See [ethics](ethics.md).
