@@ -49,11 +49,13 @@ def test_classes_take_truthy_values_and_label_two_tiers(make_client, tmp_path):
 
 def test_classes_stop_when_wikidata_stays_lagged(make_client, tmp_path):
     store = Store(tmp_path / "store", tmp_path / "raw")
-    lagged = FakeResponse(200, {"error": {"code": "maxlag"}}, headers={"Retry-After": "5"})
+    lagged = FakeResponse(
+        200, {"error": {"code": "maxlag", "lag": 13.4}}, headers={"Retry-After": "5"}
+    )
     client, _ = make_client(lambda m, u, p, h: lagged, max_retries=1)
     lines: list[str] = []
     out = backfill.fetch_classes(client, store, ["Q1"], say=lines.append)
-    assert out["stopped"] and out["items_fetched"] == 0
+    assert "reported 13.4 s of lag" in out["stopped"] and out["items_fetched"] == 0
     assert "run the command again later" in lines[0]
     assert client.sleeps == [5.0]  # it waited as asked, once, and did not push
 

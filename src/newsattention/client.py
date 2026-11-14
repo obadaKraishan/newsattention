@@ -277,6 +277,14 @@ class WikimediaClient:
                 break
             return resp
         status = last.status_code if last is not None else 0
+        lag = _maxlag_seconds(last) if last is not None else None
+        if lag is not None:
+            raise SourceBlocked(
+                host,
+                status,
+                f"{host} stayed lagged after {self.max_retries} waits (it reported {lag} s of "
+                f"lag against our maxlag of {MAXLAG_SECONDS} s); try again later.",
+            )
         raise SourceBlocked(host, status, f"{host} kept failing (HTTP {status}) after retries.")
 
     def _pace(self) -> None:
@@ -359,6 +367,14 @@ class WikimediaClient:
         self.log.append("GET", url, resp.status_code, total, when)
         self.budget.record(family, total)
         return total
+
+
+def _maxlag_seconds(resp: Any) -> float | None:
+    """The lag a ``maxlag`` answer reports, or None for any other answer."""
+    if not _is_maxlag(resp):
+        return None
+    lag = resp.json()["error"].get("lag")
+    return round(float(lag), 1) if isinstance(lag, (int, float)) else None
 
 
 def _is_maxlag(resp: Any) -> bool:
