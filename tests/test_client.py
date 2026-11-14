@@ -255,12 +255,13 @@ def test_stream_retry_is_logged(make_client, tmp_path):
 
 
 def test_min_interval_spaces_requests(make_client):
-    ticks = iter([0.0, 0.1, 5.0])
+    # Starts: 0.0; then 0.1 (waits 0.25, but the sleep ends late, at 0.42); then 0.5, which
+    # must wait until 0.42 + 0.35, not 0.35 + 0.35; then 5.0, which does not wait.
+    ticks = iter([0.0, 0.1, 0.42, 0.5, 0.77, 5.0])
     client, _ = make_client(ok(), min_interval=0.35, monotonic=lambda: next(ticks))
-    client.get(REST)
-    client.get(REST)
-    client.get(REST)
-    assert client.sleeps == [pytest.approx(0.25)]
+    for _ in range(4):
+        client.get(REST)
+    assert client.sleeps == [pytest.approx(0.25), pytest.approx(0.27)]
 
 
 def test_group_cap_covers_wikipedia_and_wikidata(make_client):

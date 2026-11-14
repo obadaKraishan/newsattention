@@ -286,7 +286,9 @@ class WikimediaClient:
             wait = self._last_start + self.min_interval - now
             if wait > 0:
                 self.sleep(wait)
-                now += wait
+                # Read the clock again: a sleep can end late, and the next wait counts from
+                # when this request really starts.
+                now = max(now + wait, self.monotonic())
         self._last_start = now
 
     def get(self, url: str, params: dict[str, Any] | None = None) -> Any:
