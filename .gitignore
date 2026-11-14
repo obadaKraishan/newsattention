@@ -6,7 +6,8 @@ docs/session-log.md
 docs/roadmap.md
 
 # Data. data/raw is a symlink to an external drive and is never committed; data/interim/ holds
-# working tables. The only tracked file in data/ is the request log (call metadata only).
+# working tables. Tracked in data/: the first sample's request log and, from the backfill on,
+# requests and bytes per day, host and status (call metadata only).
 data/raw
 data/raw/
 data/interim/
