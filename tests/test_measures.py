@@ -161,3 +161,16 @@ def test_country_status_insufficient_files():
     no_event_files = FILES - {EVENT, EVENT + timedelta(days=1)}
     st = measures.country_status(published([1, 2]), EVENT, no_event_files)
     assert st.status == "insufficient_files" and st.baseline_file_days == 28
+
+
+def test_country_status_a_missing_file_is_not_a_missing_row():
+    # Day 0 has no row and day 1 has no file: unknown, not unpublished (and the mirror case).
+    no_day1 = FILES - {EVENT + timedelta(days=1)}
+    st = measures.country_status(published(range(1, 10)), EVENT, no_day1)
+    assert st.status == "insufficient_files"
+    no_day0 = FILES - {EVENT}
+    assert measures.country_status(published(range(1, 10)), EVENT, no_day0).status == (
+        "insufficient_files"
+    )
+    # A row on the day that has a file still decides it.
+    assert measures.country_status(published([], day0=300), EVENT, no_day1).status == "appeared"

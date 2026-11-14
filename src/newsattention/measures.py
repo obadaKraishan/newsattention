@@ -187,11 +187,13 @@ class CountryStatus:
       of the published baseline days only.
     - ``appeared``: published on day 0 or day 1 and on at most 2 baseline days. It means the
       count rose above the publication threshold, not that it started from nothing.
-    - ``not_published``: no row on day 0 or day 1 (and not tracked).
+    - ``not_published``: no row on day 0 or day 1, and both days have a country file (and not
+      tracked).
     - ``unclear``: everything else.
     - ``insufficient_files``: fewer than 21 of the baseline days, or neither day 0 nor day 1,
-      have a country file at all (Wikimedia's own missing days or the start of the data), so
-      the status cannot be decided.
+      have a country file at all (Wikimedia's own missing days or the start of the data); or
+      neither day has a row and one of the two has no file, so the missing row may only be a
+      missing file. The status cannot be decided.
     """
 
     status: str
@@ -221,7 +223,9 @@ def country_status(
     ):
         status = "insufficient_files"
     elif d0 is None and d1 is None:
-        status = "not_published"
+        # A day without a file is unknown, not unpublished.
+        both_read = event_day in file_days and day1 in file_days
+        status = "not_published" if both_read else "insufficient_files"
     elif len(on) <= APPEARED_MAX_DAYS:
         status = "appeared"
     else:
