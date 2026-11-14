@@ -211,6 +211,13 @@ def cmd_plan(args: argparse.Namespace) -> int:
 def cmd_api_backfill(args: argparse.Namespace) -> int:
     store = store_of(args)
     plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
+    if backfill.full_span_end(store) is None:
+        if (store.root / "api" / "status.jsonl").exists():
+            raise SystemExit(
+                f"{store.root / 'api' / 'meta.json'} is missing. Write the --end of the first "
+                'api-backfill run there as {"full_span_end": "YYYY-MM-DD"} before going on.'
+            )
+        backfill.write_full_span_end(store, args.end)
     out = backfill.api_backfill(make_client(args), store, plan, SPAN_START, args.end)
     _print(out)
     return 0
@@ -238,9 +245,12 @@ def cmd_tables(args: argparse.Namespace) -> int:
     summary.update(tables.build_pages(store, out, SPAN_START, args.end))
     summary.update(tables.build_views_dp(store, out))
     plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
+    statuses = backfill.read_jsonl(store.root / "api" / "status.jsonl")
+    covered = backfill.coverage(plan, statuses, backfill.full_span_end(store), SPAN_START)
     bank = tables.SeriesBank(SPAN_START, args.end)
-    bank.load(sorted((store.raw / "api").glob("chunk-*.parquet")), plan)
+    bank.load(sorted((store.raw / "api").glob("chunk-*.parquet")), plan, covered)
     summary.update(tables.write_views_api(bank, out))
+    summary.update(tables.write_series(bank, out, args.end))
     summary.update(tables.build_attention(store, out, bank, args.end))
     tables.json_dump(out / "build_summary.json", summary)
     _print(summary)

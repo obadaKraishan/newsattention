@@ -7,6 +7,21 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- One Wikimedia command at a time: every command that sends requests takes a lock on one file
+  for as long as it runs; a second command stops with a plain message naming the holder, or
+  queues with `--wait`. `--cap-action` and `--cap-wikidata` cap Wikipedia's and Wikidata's API
+  apart.
+- `daily` catches up: each step starts where the store stops (portal days after the last one
+  read, the move log, country files after the last one known), and the 7-day and 28-day
+  follow-ups are worked out from what each series already covers, so a run after missed days
+  loses nothing.
+- Each language-view call records the days it asked for; `series` (new table) gives, per item
+  and language, the first and last day fetched, and the measures stop at a series' last day
+  instead of reading unfetched days as zero. Calls made before this have their last day in
+  `store/api/meta.json`.
+- `country_status`: when neither day 0 nor day 1 has a row and one of them has no country file,
+  the status is `insufficient_files`, not `not_published`.
+- The `pages` table lists only articles that a current event links.
 - Backfill commands, each resumable: `portal-backfill` and `reread` (each day read again 7
   and 30 days after it ends; a changed revision replaces the day's events and every read
   stays on record), `reparse` and `parse-report` (what the parser could not read, by month),

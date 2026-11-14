@@ -461,6 +461,27 @@ class PageInfo(_Frozen):
         return self
 
 
+class Series(_Frozen):
+    """One item and language edition: the days its language views were fetched.
+
+    Inside ``first_day`` to ``last_day`` a day without a row in ``views_api`` had no views;
+    outside it the views were not fetched (yet).
+    """
+
+    qid: str
+    project: str
+    first_day: date
+    last_day: date
+    joined: bool = Field(description="True when the series adds the views of older titles")
+
+    @model_validator(mode="after")
+    def _span(self) -> Series:
+        check_qid(self.qid)
+        if self.last_day < self.first_day:
+            raise ValueError(f"last_day {self.last_day} is before first_day {self.first_day}.")
+        return self
+
+
 TABLES: dict[str, type[_Frozen]] = {
     "events": Event,
     "event_pages": EventPage,
@@ -469,6 +490,7 @@ TABLES: dict[str, type[_Frozen]] = {
     "attention": Attention,
     "country_status": CountryAttention,
     "pages": PageInfo,
+    "series": Series,
 }
 
 #: The columns that must be unique together in each table.
@@ -480,6 +502,7 @@ KEYS: dict[str, tuple[str, ...]] = {
     "attention_summary": ("event_id", "qid", "project"),
     "country_status": ("event_id", "qid", "project", "country"),
     "pages": ("page_id",),
+    "series": ("qid", "project"),
 }
 
 #: List fields, written with "|" between items in CSV files.

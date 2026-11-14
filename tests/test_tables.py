@@ -249,3 +249,48 @@ def test_pages_leave_out_titles_no_current_event_links(tmp_path):
     out = tmp_path / "tables"
     assert tables.build_pages(store, out, START, LAST)["pages"] == 2
     assert 999 not in pq.read_table(out / "pages.parquet")["page_id"].to_pylist()
+
+
+def test_summaries_stop_at_the_last_fetched_day(tmp_path):
+    store = make_store(tmp_path)
+    out = tmp_path / "tables"
+    tables.build_events(store, out)
+    tables.build_views_dp(store, out, say=lambda m: None)
+    bank = tables.SeriesBank(START, LAST)
+    bank.series[("Q1", "en.wikipedia")] = np.full(bank.n, 50, dtype=np.int64)
+    # Fetched only up to two days after the event: later days are unknown, not zero.
+    bank.covered = {("Q1", "en.wikipedia"): (START, EVENT_DAY + timedelta(days=2))}
+    tables.build_attention(store, out, bank, LAST, say=lambda m: None)
+    summary = pq.read_table(out / "attention_summary" / "2025-02.parquet").to_pylist()[0]
+    assert summary["observed_days"] == 3  # not 16 (to the table's last day)
+    assert tables.write_series(bank, out, LAST) == {"series_rows": 1}
+    row = pq.read_table(out / "series.parquet").to_pylist()[0]
+    assert row["last_day"] == EVENT_DAY + timedelta(days=2)
+    assert validate_file(out / "series.parquet").ok
+
+
+def test_coverage_from_status_lines():
+    plan = [
+        {"qid": "Q1", "project": "en.wikipedia", "title": "A", "kind": "current"},
+        {"qid": "Q1", "project": "en.wikipedia", "title": "Old A", "kind": "old_title"},
+        {"qid": "Q1", "project": "en.wikipedia", "title": "A", "kind": "current"}
+        | {"span_start": "2025-02-01", "span_end": "2025-02-20"},
+        {"qid": "Q2", "project": "en.wikipedia", "title": "B", "kind": "current"},
+        {"qid": "Q3", "project": "en.wikipedia", "title": "C", "kind": "current"},
+    ]
+    statuses = [
+        {"plan_index": 0, "status": "ok", "days": 3},  # written before spans were recorded
+        {"plan_index": 1, "status": "ok", "days": 3, "first": "2025-01-01", "last": "2025-03-01"},
+        {"plan_index": 2, "status": "ok", "days": 3, "first": "2025-02-01", "last": "2025-02-20"},
+        {"plan_index": 3, "status": "no views", "days": 0},
+        {"plan_index": 4, "status": "error 500"},
+    ]
+    got = backfill.coverage(plan, statuses, date(2025, 2, 10), START)
+    assert got == {
+        ("Q1", "en.wikipedia"): (START, date(2025, 2, 20)),
+        ("Q2", "en.wikipedia"): (START, date(2025, 2, 10)),
+    }
+    import pytest
+
+    with pytest.raises(ValueError, match="meta.json is missing"):
+        backfill.coverage(plan, statuses, None, START)

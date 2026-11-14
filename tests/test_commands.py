@@ -54,6 +54,8 @@ def test_dp_plan_api_and_tables(make_client, monkeypatch, tmp_path, capsys):
     assert planned["calls"] == 2 and planned["appended_now"] == 1
     assert run(make_client, monkeypatch, tmp_path, "api-backfill", *span)[0] == 0
     assert summary(capsys.readouterr().out)["calls"] == 2
+    meta = json.loads((tmp_path / "store" / "api" / "meta.json").read_text())
+    assert meta == {"full_span_end": "2025-03-19"}  # written by the first run
     report = tmp_path / "api_check.json"
     assert run(make_client, monkeypatch, tmp_path, "api-check", *span, "--out", str(report))[0] == 0
     checked = summary(capsys.readouterr().out)
@@ -96,3 +98,14 @@ def test_make_client_counts_the_log(tmp_path):
     assert client.budget.used == {"action": 1, "wikidata": 1}
     assert client.min_interval == 0.35
     assert commands.yesterday() < date.today() or commands.yesterday() <= date.today()
+
+
+def test_api_backfill_refuses_without_meta_on_an_old_store(make_client, monkeypatch, tmp_path):
+    api = tmp_path / "store" / "api"
+    api.mkdir(parents=True)
+    (api / "plan.jsonl").write_text("")
+    (api / "status.jsonl").write_text('{"plan_index": 0, "status": "ok", "days": 1}\n')
+    import pytest
+
+    with pytest.raises(SystemExit, match="meta.json is missing"):
+        run(make_client, monkeypatch, tmp_path, "api-backfill", "--end", "2025-03-19")

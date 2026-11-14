@@ -222,12 +222,26 @@ class SeriesBank:
         self.n = (end - start).days + 1
         self.series: dict[tuple[str, str], np.ndarray] = {}
         self.joined: set[tuple[str, str]] = set()
-        self.covered: dict[tuple[str, str], tuple[int, int]] = {}
+        #: First and last day fetched per series; a series without an entry counts as fetched
+        #: over the whole span (the older behavior, kept for small tests).
+        self.covered: dict[tuple[str, str], tuple[date, date]] = {}
+
+    def last_of(self, key: tuple[str, str], last_day: date) -> date:
+        """The last day of ``key`` that was fetched, and not later than ``last_day``."""
+        span = self.covered.get(key)
+        return min(last_day, span[1]) if span else last_day
 
     def index(self, day: date) -> int:
         return (day - self.start).days
 
-    def load(self, chunks: Iterable[Path], plan: list[dict[str, Any]]) -> None:
+    def load(
+        self,
+        chunks: Iterable[Path],
+        plan: list[dict[str, Any]],
+        covered: dict[tuple[str, str], tuple[date, date]] | None = None,
+    ) -> None:
+        """Read the raw chunks; ``covered`` (from :func:`backfill.coverage`) bounds each series."""
+        self.covered = dict(covered or {})
         old: dict[tuple[str, str], list[tuple[int, int, np.ndarray]]] = defaultdict(list)
         for path in chunks:
             table = pq.read_table(path)
@@ -304,6 +318,32 @@ def write_views_api(bank: SeriesBank, out: Path, say: Say = print) -> dict[str, 
         total += len(cols["date"])
     say(f"views_api: {total:,} rows over {len(keys):,} series")
     return {"views_api": total, "series": len(keys), "joined": len(bank.joined)}
+
+
+SERIES_SCHEMA = pa.schema(
+    [
+        ("qid", pa.string()),
+        ("project", pa.string()),
+        ("first_day", pa.date32()),
+        ("last_day", pa.date32()),
+        ("joined", pa.bool_()),
+    ]
+)
+
+
+def write_series(bank: SeriesBank, out: Path, last_day: date) -> dict[str, int]:
+    """One row per series: the days that were fetched, up to the table's last day."""
+    cols: dict[str, list[Any]] = {n: [] for n in SERIES_SCHEMA.names}
+    for key in sorted(bank.series):
+        first, last = bank.covered.get(key, (bank.start, last_day))
+        cols["qid"].append(key[0])
+        cols["project"].append(key[1])
+        cols["first_day"].append(first)
+        cols["last_day"].append(min(last, last_day))
+        cols["joined"].append(key in bank.joined)
+    out.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.table(cols, schema=SERIES_SCHEMA), out / "series.parquet", compression="zstd")
+    return {"series_rows": len(cols["qid"])}
 
 
 def event_links(out: Path) -> list[tuple[str, date, str]]:
@@ -543,7 +583,7 @@ def build_attention(
             sums = []
             for project in projects.get(qid, []):
                 arr = bank.series[(qid, project)]
-                sm = summary_from_array(arr, bank.start, d, last_day)
+                sm = summary_from_array(arr, bank.start, d, bank.last_of((qid, project), last_day))
                 sums.append((project, sm))
                 e = (d - bank.start).days
                 for k in range(sm.observed_days):

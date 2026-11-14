@@ -477,6 +477,9 @@ def test_api_backfill_chunks_and_resumes(make_client, store):
     assert set(table.column("kind").to_pylist()) == {"current", "old_title"}
     status = backfill.read_jsonl(store.root / "api" / "status.jsonl")
     assert [s["status"] for s in status] == ["ok", "no views", "error 400", "ok", "ok"]
+    # Each answered call records the days it asked for (its span, or the run's span).
+    assert (status[0]["first"], status[0]["last"]) == ("2025-01-01", "2025-01-31")
+    assert (status[4]["first"], status[4]["last"]) == ("2025-01-01", "2025-01-02")
 
 
 def test_move_windows_skip_covered_days(tmp_path):

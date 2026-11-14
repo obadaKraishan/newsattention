@@ -935,7 +935,13 @@ def api_backfill(
             else:
                 out["ok"] += 1
             statuses.append(
-                {"plan_index": j, "status": "ok" if items else "no views", "days": len(items)}
+                {
+                    "plan_index": j,
+                    "status": "ok" if items else "no views",
+                    "days": len(items),
+                    "first": first.isoformat(),
+                    "last": last.isoformat(),
+                }
             )
             for it in items:
                 ts = it["timestamp"]
@@ -962,6 +968,64 @@ def api_backfill(
             break
         i = done_to
         say(f"api: {i:,} of {len(plan):,} calls done")
+    return out
+
+
+def full_span_end(store: Store) -> date | None:
+    """The last day asked for by plan entries without a span of their own.
+
+    Status lines record the days each call asked for; lines written before that (the 2026
+    backfill) take this day from ``api/meta.json``.
+    """
+    path = store.root / "api" / "meta.json"
+    if not path.exists():
+        return None
+    return date.fromisoformat(json.loads(path.read_text())["full_span_end"])
+
+
+def write_full_span_end(store: Store, end: date) -> None:
+    write_json(store.root / "api" / "meta.json", {"full_span_end": end.isoformat()})
+
+
+def coverage(
+    plan: list[dict[str, Any]],
+    statuses: Iterable[dict[str, Any]],
+    full_end: date | None,
+    start: date,
+) -> dict[tuple[str, str], tuple[date, date]]:
+    """First and last day fetched for each item and language under its current title.
+
+    A call counts once its status line says ``ok`` or ``no views``: an empty answer means no
+    views on those days, not unknown days. Old-title and redirect calls add views to a series
+    but do not extend its days. Days between the first and the last are all fetched: follow-up
+    calls start no later than the day before the series' last day (see :mod:`daily`).
+    """
+    last_status: dict[int, dict[str, Any]] = {}
+    for row in statuses:
+        last_status[int(row["plan_index"])] = row
+    out: dict[tuple[str, str], tuple[date, date]] = {}
+    for j, row in last_status.items():
+        if not str(row.get("status", "")).startswith(("ok", "no views")) or j >= len(plan):
+            continue
+        item = plan[j]
+        if item.get("kind") != "current":
+            continue
+        if "first" in row:
+            first, last = date.fromisoformat(row["first"]), date.fromisoformat(row["last"])
+        else:
+            last_s = item.get("span_end")
+            if last_s is None and full_end is None:
+                raise ValueError(
+                    "store/api/meta.json is missing: it names the last day of the calls made "
+                    "before status lines recorded their days (the --end of that api-backfill)."
+                )
+            first = date.fromisoformat(item.get("span_start") or start.isoformat())
+            last = date.fromisoformat(last_s) if last_s else full_end  # type: ignore[assignment]
+        key = (item["qid"], item["project"])
+        if key in out:
+            a, b = out[key]
+            first, last = min(a, first), max(b, last)
+        out[key] = (first, last)
     return out
 
 
