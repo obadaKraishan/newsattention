@@ -227,3 +227,15 @@ def test_daily_follows_up_redirect_titles_with_their_page(make_client, tmp_path)
         ("Fakeland", "current", "2025-03-11"),
         ("Old Fakeland", "redirect", "2025-03-11"),
     ]
+
+
+def test_daily_plans_the_old_titles_of_a_new_item_that_moved(make_client, tmp_path):
+    store = _store_with_q1(tmp_path, [OLD_DAY], OLD_DAY)
+    move = {"logid": 1, "page_id": 200, "from_title": "Newland (old)", "from_ns": 0}
+    move |= {"to_title": "Newland", "to_ns": 0, "timestamp": "2025-02-10T12:00:00Z"}
+    backfill.append_jsonl(store.raw / "movelog" / "ns0" / "2025-02.jsonl", [move])
+    client, _ = make_client(handler)
+    daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lambda m: None)
+    plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
+    old = [(p["title"], p["span_start"], p["span_end"]) for p in plan if p["kind"] == "old_title"]
+    assert old == [("Newland (old)", "2025-01-01", "2025-02-10")]

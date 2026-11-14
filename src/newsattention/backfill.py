@@ -385,10 +385,26 @@ def load_resolved(store: Store) -> dict[str, wikidata.Resolved]:
 def resolve_links(
     client: WikimediaClient, store: Store, say: Say = print, now: Callable[[], datetime] = utc_now
 ) -> dict[str, int]:
-    """Resolve every linked title the cache does not hold yet (50 titles a request)."""
+    """Resolve every linked title the cache does not hold yet (50 titles a request).
+
+    A title that led to an article without a Wikidata item is asked about again once its
+    answer is a day old: new articles often get their item a day or two after they appear,
+    and language views are planned per item. The newer answer replaces the older one.
+    """
     cache = load_resolved(store)
     titles = list(dict.fromkeys(link["title"] for link in collect_links(store)))
     todo = [t for t in titles if t not in cache]
+    latest: dict[str, str] = {}
+    for row in read_jsonl(store.resolved):
+        latest[row["linked_title"]] = row.get("resolved_at", "")
+    a_day_ago = iso(now() - timedelta(days=1))
+    linked = set(titles)
+    recheck = [
+        t
+        for t, r in cache.items()
+        if t in linked and r.page_id and r.qid is None and latest.get(t, "") < a_day_ago
+    ]
+    todo += recheck
     done = 0
     for i in range(0, len(todo), 500):
         chunk = todo[i : i + 500]
@@ -397,7 +413,12 @@ def resolve_links(
         append_jsonl(store.resolved, ({**asdict(r), "resolved_at": stamp} for r in found.values()))
         done += len(found)
         say(f"links: {done} of {len(todo)} titles resolved")
-    return {"titles": len(titles), "resolved_now": done, "cached": len(titles) - len(todo)}
+    return {
+        "titles": len(titles),
+        "resolved_now": done,
+        "rechecked": len(recheck),
+        "cached": len(titles) - len(todo) + len(recheck),
+    }
 
 
 # 2b. Page creation and moves ----------------------------------------------------------------

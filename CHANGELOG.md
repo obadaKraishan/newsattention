@@ -22,6 +22,9 @@ All notable changes to this project are documented here. The format follows
 - `country_status`: when neither day 0 nor day 1 has a row and one of them has no country file,
   the status is `insufficient_files`, not `not_published`.
 - The `pages` table lists only articles that a current event links.
+- `links` (and so `daily`) asks again about a linked article that had no Wikidata item, once
+  the answer is a day old: new articles often get their item a day or two late, and language
+  views are planned per item. `daily` plans the old titles of a new item whose page moved.
 - `classes`: the Wikidata "instance of" classes of every linked item, and for three tiers of
   classes their English label and "subclass of" values, in batches of 50; resumable, and it
   stops rather than pushes when Wikidata stays lagged.

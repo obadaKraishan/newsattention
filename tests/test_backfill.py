@@ -138,7 +138,7 @@ def test_resolve_links_caches(make_client, store):
 
     client, session = make_client(handler)
     out = backfill.resolve_links(client, store, say=lambda m: None)
-    assert out == {"titles": 3, "resolved_now": 3, "cached": 0}
+    assert out == {"titles": 3, "resolved_now": 3, "rechecked": 0, "cached": 0}
     assert backfill.resolve_links(client, store, say=lambda m: None)["cached"] == 3
     assert len(session.calls) == 1
     assert backfill.load_resolved(store)["Fakeland"].qid == "Q8"
@@ -618,3 +618,28 @@ def test_api_backfill_flushes_each_chunk_before_its_progress(make_client, store,
         "chunk-0000004.parquet",
         "progress.json",
     ]
+
+
+def test_resolve_links_asks_again_for_articles_that_had_no_item(make_client, store):
+    day = date(2025, 3, 2)
+    backfill.record_read(store, page(day, 1, PAGE_V1), "first", T0)
+    old = {"page_id": 5, "qid": None, "redirected": False, "resolved_at": "2025-03-01T00:00:00Z"}
+    backfill.append_jsonl(
+        store.resolved,
+        [
+            {"linked_title": "Fakeland", "title": "Fakeland", **old},
+            {"linked_title": "Made-up Cup", "title": "Made-up Cup", **old, "qid": "Q9"},
+        ],
+    )
+
+    def handler(method, url, params, headers):
+        assert params["titles"] == "Fakeland"  # only the article that had no item
+        pages = [{"title": "Fakeland", "pageid": 5, "pageprops": {"wikibase_item": "Q5"}}]
+        return FakeResponse(200, {"query": {"pages": pages}})
+
+    client, _ = make_client(handler)
+    out = backfill.resolve_links(client, store, say=lambda m: None, now=lambda: T0)
+    assert out["rechecked"] == 1 and backfill.load_resolved(store)["Fakeland"].qid == "Q5"
+    # Asked again only once a day has passed since the last answer.
+    again = backfill.resolve_links(client, store, say=lambda m: None, now=lambda: T0)
+    assert again["rechecked"] == 0

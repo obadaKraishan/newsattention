@@ -175,7 +175,13 @@ def run_daily(
         fresh = backfill.plan_languages({q: after_items[q] for q in new_items}, totals, languages)
         fresh, _ = backfill.fill_titles(client, fresh, say=lambda m: None)
         span = {"span_start": span_start.isoformat(), "span_end": day.isoformat()}
-        entries.extend({**e, "kind": "current", **span} for e in fresh)
+        current = [{**e, "kind": "current", **span} for e in fresh]
+        entries.extend(current)
+        # A new item whose English page moved inside the span needs its old titles too.
+        english = [e for e in current if e["project"] == EN]
+        moves = backfill.load_moves(store, {e["page_id"] for e in english})
+        with_old = backfill.add_old_titles(english, moves, span_start, day)
+        entries.extend(with_old[len(english) :])
     due, unseen = follow_ups_due(items_by_day(store), covered, day)
     for qid in sorted(due):
         if qid not in after_items or qid in unseen:
