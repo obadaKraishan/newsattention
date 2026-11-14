@@ -34,9 +34,10 @@ Each table is a set of Parquet files, one per month.
 | Table | One row per | Source |
 |---|---|---|
 | `events` | event on a portal day page | Current Events Portal (CC BY-SA 4.0 text) |
-| `event_pages` | link from an event to an article | portal links, resolved through the Wikipedia API |
+| `event_pages` | link from an event to an article, with its role (`event`, `story` or `context`) and a confidence | portal links, resolved through the Wikipedia API; roles from a rule (DRAFT, see the method) |
 | `pages` | linked English article: creation estimate, moves in the span | MediaWiki API (page ids, first revisions, move log) |
-| `views_api` | item, language and day (days without a row are 0) | Analytics API, exact |
+| `views_api` | item, language and day (inside a series' fetched days, a day without a row had no views) | Analytics API, exact |
+| `series` | item and language: first and last day fetched, and whether older titles are joined in | derived |
 | `views_dp` | item, language, country and day, as published | differentially private files, noisy |
 | `attention` | event, item, language and day 0 to 28 | derived |
 | `attention_summary` | event, item and language: the measures | derived |
@@ -96,9 +97,13 @@ answers kept as Parquet, 0.14 GB of move log and 10 MB of portal pages.
   countries of medium and higher risk only from 2024-02-15; an empty file for 2026-11-08 (as
   of 2026-11-13). Events before 2023-02-27 have too few baseline days with a file for a
   country status (`insufficient_files`).
-- Moved pages: English series are joined across the page's titles at the move dates, but
-  views that reach a page through a redirect from its old title are not counted, so a series
-  can drop for some days after a move.
+- Moved pages: English series are joined across the page's titles at the move dates, and an
+  old title that now redirects to the same page adds its views after the move. Views through
+  an old title that became another article are left out, and moves in other language editions
+  are not followed.
+- Roles: which link is the event's own article and which the larger story come from a rule
+  (no model), with a confidence; it is checked by hand on a sample of 150 events before the
+  roles leave DRAFT.
 
 ## Ethics
 See [ethics](ethics.md).
