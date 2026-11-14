@@ -1,7 +1,7 @@
 """Writes that reach the disk before the next step relies on them.
 
 A file the operating system has accepted can still sit in memory, or in the drive's own cache,
-for some seconds. If an external drive drops off its USB hub in that time, the file is lost
+for some seconds. If an external drive loses its USB connection in that time, the file is lost
 although the run has moved on. These helpers flush a file, and the folder that names it, to the
 device: on macOS with ``F_FULLFSYNC``, which also empties the drive's cache, and elsewhere with
 ``fsync``. A run records its progress only after its files are flushed, so a drop either stops
