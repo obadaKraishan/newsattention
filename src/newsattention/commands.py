@@ -230,6 +230,31 @@ def cmd_old_titles(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_review_check(args: argparse.Namespace) -> int:
+    """Read filled review sheets back; report what is missing or invalid (never a title)."""
+    from newsattention import review
+
+    status = 0
+    answers = []
+    for path in args.files:
+        check = review.check_sheet(path)
+        notes = sum(1 for a in check.answers if a["notes"])
+        print(
+            f"{path.name}: {check.events} events, {check.complete} answered in full, "
+            f"{notes} with a note"
+        )
+        for problem in check.problems:
+            print(f"  {problem}")
+        if not check.ok:
+            status = 1
+        answers.extend({"sheet": path.name, **a} for a in check.answers)
+    if args.answers:
+        args.answers.parent.mkdir(parents=True, exist_ok=True)
+        backfill.write_json(args.answers, answers)
+        print(f"answers written to {args.answers}")
+    return status
+
+
 def cmd_api_backfill(args: argparse.Namespace) -> int:
     store = store_of(args)
     plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
@@ -357,6 +382,11 @@ def register(sub: Any) -> None:
     p.add_argument("--english-only", action="store_true")
     p.add_argument("--force", action="store_true", help="refused: a plan is only appended to")
     p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("review-check", help="read filled review sheets back and check them")
+    p.add_argument("files", nargs="+", type=Path)
+    p.add_argument("--answers", type=Path, help="also write the answers (JSON) for scoring")
+    p.set_defaults(func=cmd_review_check)
 
     p = sub.add_parser(
         "old-titles", parents=[common], help="plan views through the old titles of moved pages"

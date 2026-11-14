@@ -22,6 +22,10 @@ All notable changes to this project are documented here. The format follows
 - `country_status`: when neither day 0 nor day 1 has a row and one of them has no country file,
   the status is `insufficient_files`, not `not_published`.
 - The `pages` table lists only articles that a current event links.
+- Review sheets (`newsattention.review`): `.xlsx` workbooks written with the standard library,
+  with a guide tab and one block per event (date, category, text, numbered links that open the
+  article) and two dropdowns per event; `review-check FILE...` reads filled sheets back and
+  reports what is missing or invalid by event number, never by title (`--answers` keeps them).
 - `links` (and so `daily`) asks again about a linked article that had no Wikidata item, once
   the answer is a day old: new articles often get their item a day or two late, and language
   views are planned per item. `daily` plans the old titles of a new item whose page moved.
