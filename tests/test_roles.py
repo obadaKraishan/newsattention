@@ -85,10 +85,37 @@ def test_a_new_article_in_the_text_is_the_event_and_the_heading_is_the_story():
     assert roles.main_story(links, got) == 4
 
 
-def test_an_old_event_article_in_the_text_is_a_story_unless_it_names_the_year():
+def test_an_old_event_article_in_the_text_is_the_event_only_with_the_year_and_a_jump():
     links = [link(1, "Fakeland insurgency"), link(2, "2031 Fakeland general election")]
-    got = run(links, [facts(date(2019, 6, 1), "event"), facts(date(2029, 1, 1), "event")])
-    assert got == [("story", "medium"), ("event", "medium")]  # class, year and a shared word
+    old = [facts(date(2019, 6, 1), "event"), facts(date(2029, 1, 1), "event")]
+    # A campaign day: no jump, so the election article is the larger story.
+    assert run(links, old) == [("story", "medium"), ("story", "medium")]
+    jump = {"lift_day0": 12.0, "lift_day1": 30.0, "baseline": 400.0, "peak_views": 1, "peak_day": 1}
+    # Election day: the article jumps, so it is the event's own article.
+    assert run(links, old, [None, jump]) == [("story", "medium"), ("event", "high")]
+
+
+def test_the_nearest_heading_can_be_the_event_article():
+    links = [link(1, "Bramble"), link(2, "2031 Bramble market shooting", in_text=False, level=1)]
+    got = run(links, [facts(date(2001, 1, 1)), facts(date(2031, 3, 5))])
+    assert got[1][0] == "event"
+    # A new heading that shares no word with the text is the story around it.
+    links[1] = link(2, "2031 Otherland unrest", in_text=False, level=1)
+    assert run(links, [facts(date(2001, 1, 1)), facts(date(2031, 3, 1))])[1][0] == "story"
+
+
+def test_the_main_story_skips_a_timeline_when_there_is_another_story():
+    links = [
+        link(1, "Timeline of the Fakeland insurgency", in_text=False, level=1),
+        link(2, "Fakeland insurgency", in_text=False, level=2),
+    ]
+    assigned = [("story", "high"), ("story", "medium")]
+    assert roles.main_story(links, assigned) == 2
+    assert roles.main_story(links[:1], assigned[:1]) == 1
+
+
+def test_words_keep_letters_outside_ascii():
+    assert "nzérékoré" in roles.content_words("A stampede in Nzérékoré, Guinea")
 
 
 def test_a_new_person_article_is_context_and_a_draft_moved_in_is_new():

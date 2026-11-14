@@ -23,11 +23,14 @@ The signals, for one event and one linked page:
 The rule:
 
 1. A page with a context class is ``context``.
-2. A page the event's text links can be ``event`` when it is ``new``, or has an event class and
-   the event's year, or has the year, the words and a jump. Of several, the one with the most
-   signals wins (then the earlier link).
+2. The ``event`` page, at most one, is chosen among candidates. A page the event's text links is
+   a candidate when it is ``new``, or has the event's year and a jump together with an event
+   class or shared words. The nearest story heading is a candidate when it is new, shares words
+   and has the year, or has an event class, the year, shared words and a jump (the portal often
+   lists an event under its own article). The candidate with the most signals wins, then a link
+   in the text over the heading, then the earlier link.
 3. Every other page that a story heading links, or that has an event class and is not new, is
-   ``story``.
+   ``story``. The main story is under the nearest heading; a timeline or a list comes last.
 4. The rest is ``context``.
 
 Confidence counts the signals that agree with the role: for ``event`` among new (counted
@@ -108,7 +111,7 @@ CONTEXT_HEADS = frozenset(
 
 PREPOSITIONS = {"of", "in", "for", "by", "at", "on", "to", "from", "with", "within", "during"}
 YEAR_RE = re.compile(r"\b((?:19|20)\d{2})(?:[\u2013-](\d{2,4}))?\b")
-WORD_RE = re.compile(r"[a-z]+(?:'[a-z]+)?")
+WORD_RE = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)?")
 STOPWORDS = frozenset(
     _words(
         """
@@ -257,6 +260,18 @@ def _level(count: int, high: int, medium: int) -> str:
     return "high" if count >= high else "medium" if count >= medium else "low"
 
 
+def is_event_candidate(s: Signals) -> bool:
+    """Can this page be the article about the event itself?"""
+    if s.context_class:
+        return False
+    if s.in_text:
+        return s.new or (s.year and s.jump and (s.event_class or s.words))
+    if s.story_level == 1:
+        # The portal often lists an event under its own article, as the nearest heading.
+        return (s.new and s.words and s.year) or (s.event_class and s.year and s.words and s.jump)
+    return False
+
+
 def assign(links: list[Mapping[str, Any]], sigs: list[Signals]) -> list[tuple[str, str]]:
     """``(role, confidence)`` for each link of one event, in link order."""
     out: list[tuple[str, str] | None] = [None] * len(links)
@@ -265,10 +280,11 @@ def assign(links: list[Mapping[str, Any]], sigs: list[Signals]) -> list[tuple[st
         if s.context_class:
             out[k] = ("context", "high")
             continue
-        if s.in_text and (s.new or (s.event_class and s.year) or (s.year and s.words and s.jump)):
-            candidates.append((-s.event_score(), links[k].get("link_order", k + 1), k))
+        if is_event_candidate(s):
+            order = links[k].get("link_order", k + 1)
+            candidates.append((-s.event_score(), not s.in_text, order, k))
     if candidates:
-        k = min(candidates)[2]
+        k = min(candidates)[3]
         out[k] = ("event", _level(sigs[k].event_score(), 4, 3))
     for k, s in enumerate(sigs):
         if out[k] is not None:
@@ -284,14 +300,21 @@ def assign(links: list[Mapping[str, Any]], sigs: list[Signals]) -> list[tuple[st
     return [o for o in out if o is not None]
 
 
+LIST_PREFIXES = ("timeline of", "list of", "lists of", "outline of", "index of")
+
+
 def main_story(links: list[Mapping[str, Any]], roles: list[tuple[str, str]]) -> int | None:
-    """The link number of the event's main story: the nearest heading, else the best in-text one."""
+    """The link number of the event's main story: the nearest heading, else the best in-text one.
+
+    A timeline or a list comes last: it follows the story rather than being its article.
+    """
     order = {"high": 0, "medium": 1, "low": 2}
     best = None
     for link, (role, conf) in zip(links, roles, strict=True):
         if role != "story":
             continue
-        key = (link.get("story_level") or 99, order[conf], link["link_order"])
+        is_list = str(link.get("page_title", "")).lower().startswith(LIST_PREFIXES)
+        key = (is_list, link.get("story_level") or 99, order[conf], link["link_order"])
         if best is None or key < best[0]:
             best = (key, link["link_order"])
     return best[1] if best else None

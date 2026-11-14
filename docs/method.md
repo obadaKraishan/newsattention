@@ -181,11 +181,15 @@ that reads only stored signals (no model), with a confidence:
 **The rule** (version 1, `newsattention.roles`):
 
 1. A page with a context class is `context`.
-2. A page that the event's text links can be the `event` page when it is new, or has an event
-   class and the event's year, or has the year, shared words and a jump. Of several, the one
-   with the most signals wins (new counts twice), then the earlier link.
+2. The `event` page, at most one, is chosen among candidates. A page that the event's text
+   links is a candidate when it is new, or has the event's year and a jump together with an
+   event class or shared words. The nearest story heading is a candidate when it is new, shares
+   words and has the year, or has an event class, the year, shared words and a jump: the portal
+   often lists an event under its own article. The candidate with the most signals wins (new
+   counts twice), then a link in the text over the heading, then the earlier link.
 3. Every other page that a story heading links, or that has an event class and is not new, is
-   `story`. The event's main story is the one under the nearest heading.
+   `story`. The event's main story is the one under the nearest heading; a timeline or a list
+   comes last.
 4. The rest is `context`.
 
 **Confidence** counts the signals that agree with the role. For `event`: new (counted twice),
