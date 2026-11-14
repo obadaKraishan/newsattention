@@ -22,6 +22,8 @@ All notable changes to this project are documented here. The format follows
 - `country_status`: when neither day 0 nor day 1 has a row and one of them has no country file,
   the status is `insufficient_files`, not `not_published`.
 - The `pages` table lists only articles that a current event links.
+- `api-backfill --max-calls N` stops at the first chunk boundary after N calls, so a long run
+  can be done in slices and another command can take the lock in between.
 - Review sheets (`newsattention.review`): `.xlsx` workbooks written with the standard library,
   with a guide tab and one block per event (date, category, text, numbered links that open the
   article) and two dropdowns per event; `review-check FILE...` reads filled sheets back and

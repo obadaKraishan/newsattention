@@ -1096,8 +1096,12 @@ def api_backfill(
     end: date,
     chunk: int = 250,
     say: Say = print,
+    max_calls: int | None = None,
 ) -> dict[str, int]:
     """Fetch the plan in chunks; each finished chunk is one raw Parquet file.
+
+    With ``max_calls`` the run stops at the first chunk boundary at or after that many calls,
+    so a long run can be done in slices (another command can take the lock in between).
 
     The progress file names the next plan index; a re-run starts there. Days the API leaves
     out are zeros and are not stored (the plan's span says which days are covered).
@@ -1168,6 +1172,9 @@ def api_backfill(
             break
         i = done_to
         say(f"api: {i:,} of {len(plan):,} calls done")
+        if max_calls is not None and out["calls"] >= max_calls and i < len(plan):
+            say(f"api: stopped after {out['calls']:,} calls (--max-calls); run again to go on")
+            break
     return out
 
 

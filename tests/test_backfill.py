@@ -643,3 +643,27 @@ def test_resolve_links_asks_again_for_articles_that_had_no_item(make_client, sto
     # Asked again only once a day has passed since the last answer.
     again = backfill.resolve_links(client, store, say=lambda m: None, now=lambda: T0)
     assert again["rechecked"] == 0
+
+
+def test_api_backfill_stops_at_a_chunk_boundary_after_max_calls(make_client, store):
+    plan = [
+        {"qid": f"Q{i}", "project": "en.wikipedia", "title": f"T{i}", "page_id": i, "rank": 0}
+        | {"kind": "current"}
+        for i in range(7)
+    ]
+    ok = FakeResponse(200, {"items": [{"timestamp": "2025010100", "views": 5}]})
+    client, _ = make_client(lambda m, u, p, h: ok)
+    lines: list[str] = []
+    out = backfill.api_backfill(
+        client,
+        store,
+        plan,
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        chunk=2,
+        say=lines.append,
+        max_calls=3,
+    )
+    assert out["calls"] == 4  # two chunks of two: the first boundary at or after 3
+    assert json.loads((store.root / "api" / "progress.json").read_text())["next"] == 4
+    assert "run again to go on" in lines[-1]

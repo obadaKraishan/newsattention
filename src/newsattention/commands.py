@@ -265,7 +265,9 @@ def cmd_api_backfill(args: argparse.Namespace) -> int:
                 'api-backfill run there as {"full_span_end": "YYYY-MM-DD"} before going on.'
             )
         backfill.write_full_span_end(store, args.end)
-    out = backfill.api_backfill(make_client(args), store, plan, SPAN_START, args.end)
+    out = backfill.api_backfill(
+        make_client(args), store, plan, SPAN_START, args.end, max_calls=args.max_calls
+    )
     _print(out)
     return 0
 
@@ -398,6 +400,7 @@ def register(sub: Any) -> None:
     p.set_defaults(func=cmd_classes)
 
     p = sub.add_parser("api-backfill", parents=[common, span], help="fetch the language views")
+    p.add_argument("--max-calls", type=int, help="stop at the chunk boundary after this many")
     p.set_defaults(func=cmd_api_backfill)
 
     p = sub.add_parser(
