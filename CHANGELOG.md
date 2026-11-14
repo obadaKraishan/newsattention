@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- The portal parser renders the six templates the backfill met without a rule (`#expr`,
+  `AFL`, `INRConvert`, `Renminbi`, `circa`, and `unreliable inline`, which is dropped).
 - One Wikimedia command at a time: every command that sends requests takes a lock on one file
   for as long as it runs; a second command stops with a plain message naming the holder, or
   queues with `--wait`. `--cap-action` and `--cap-wikidata` cap Wikipedia's and Wikidata's API

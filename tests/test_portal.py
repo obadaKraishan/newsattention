@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 
+from newsattention import portal
 from newsattention.portal import (
     PortalPage,
     build_events,
@@ -257,3 +258,16 @@ def test_parse_stats_count_what_was_not_read():
     assert none.layout == "none"
     assert none.uncategorized_events == 1
     assert none.events_without_links == 0
+
+
+def test_the_six_templates_found_in_the_backfill_are_rendered():
+    stats = portal.ParseStats()
+    text = (
+        "{{AFL|Mel}} beat {{AFL|StK}}; {{INRConvert|1700|c|lk=on}} in aid; a {{Renminbi|link=yes}} "
+        "bond of {{#expr:5000000}} units, {{circa}} 1900{{unreliable inline}}."
+    )
+    assert portal.render_text(text, stats) == (
+        "Melbourne beat St Kilda; \u20b91700 crore in aid; a renminbi bond of 5000000 units, "
+        "c. 1900."
+    )
+    assert stats.unknown_templates == {}

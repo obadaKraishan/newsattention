@@ -55,7 +55,20 @@ NON_ARTICLE_PREFIXES = {
 DROP_TEMPLATES = {
     "citation needed", "cn", "clarify", "efn", "flag icon", "flagdeco", "flagicon", "refn",
     "sfn", "update", "when", "better source needed", "dead link", "failed verification",
+    "unreliable inline",
 }  # fmt: skip
+
+#: Australian Football League club codes ({{AFL|Mel}} renders "Melbourne").
+AFL_CLUBS = {
+    "ade": "Adelaide", "bri": "Brisbane Lions", "car": "Carlton", "col": "Collingwood",
+    "ess": "Essendon", "fre": "Fremantle", "gee": "Geelong", "gcs": "Gold Coast",
+    "gws": "Greater Western Sydney", "haw": "Hawthorn", "mel": "Melbourne",
+    "nm": "North Melbourne", "pa": "Port Adelaide", "ric": "Richmond", "stk": "St Kilda",
+    "syd": "Sydney", "wc": "West Coast", "wb": "Western Bulldogs",
+}  # fmt: skip
+
+#: Indian number words for {{INRConvert|amount|unit}}.
+INR_UNITS = {"c": "crore", "l": "lakh", "b": "billion", "m": "million", "t": "trillion"}
 
 LINK_RE = re.compile(r"\[\[([^\[\]|]*)(?:\|([^\[\]]*))?\]\]")
 EXTLINK_RE = re.compile(r"\[((?:https?:)?//[^\s\]]+)(?:\s+[^\]]*)?\]")
@@ -233,6 +246,17 @@ def _render_template(body: str, stats: ParseStats | None = None) -> str:
         return f"{args[0]} railway station" if args else ""
     if name == "nbsp":
         return " "
+    if name.startswith("#expr:"):
+        return body.split(":", 1)[1].strip()  # a plain number in every use so far
+    if name in {"circa", "c."}:
+        return "c."
+    if name == "afl" and args:
+        return AFL_CLUBS.get(args[0].lower(), args[0])
+    if name == "inrconvert" and args:
+        unit = INR_UNITS.get(args[1].lower(), "") if len(args) > 1 else ""
+        return f"\u20b9{args[0]}" + (f" {unit}" if unit else "")
+    if name == "renminbi":
+        return "renminbi"
     if name in {"snd", "spaced ndash", "spnd"}:
         return " \u2013 "
     if name in {"sub", "sup"}:
