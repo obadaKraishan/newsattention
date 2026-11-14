@@ -61,8 +61,8 @@ Version 1 as built on 2026-11-14 (portal days 2023-02-06 to 2026-11-12, views fr
 
 - 1,376 portal day pages, **21,821 events** (median 15 a day, from 8 to 25 for the middle 80%
   of days; 391 a month in 2023, 613 a month in 2026), with a median of 6 links each.
-- **33,417 linked items** (Wikidata ids) behind 37,265 linked titles; 4,945 of their English
-  pages were moved inside the span.
+- **33,417 linked items** (Wikidata ids) behind 37,265 linked titles; 4,941 of their English
+  pages were moved inside the span, and each of their series is joined across its titles.
 - Language views: 112,530 series (English and up to five other languages per item, 198
   languages in all); country views: the rows of linked items in 1,375 daily files.
 
