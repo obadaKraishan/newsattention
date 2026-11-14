@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import numpy as np
 import pyarrow as pa
@@ -72,11 +72,13 @@ def handler(method, url, params, headers):
     raise AssertionError(f"unexpected {method} {url}")
 
 
-def test_daily_runs_every_step(make_client, tmp_path):
+def _store_with_q1(tmp_path, days, covered_until):
+    """A store whose portal days ``days`` link Fakeland (Q1), fetched up to ``covered_until``."""
     store = Store(tmp_path / "store", tmp_path / "raw")
-    read_at = datetime(2025, 3, 13, tzinfo=timezone.utc)
-    title = "Portal:Current events/2025 March 12"
-    backfill.record_read(store, PortalPage(title, OLD_DAY, 5, 8, None, TEXT), "first", read_at)
+    for d in days:
+        title = f"Portal:Current events/{d.year} {d.strftime('%B')} {d.day}"
+        read_at = datetime(d.year, d.month, d.day, tzinfo=timezone.utc) + timedelta(days=1)
+        backfill.record_read(store, PortalPage(title, d, 5, 8, None, TEXT), "first", read_at)
     backfill.append_jsonl(
         store.resolved,
         [
@@ -90,6 +92,19 @@ def test_daily_runs_every_step(make_client, tmp_path):
             }
         ],
     )
+    entry = {"qid": "Q1", "project": "en.wikipedia", "title": "Fakeland", "page_id": 100}
+    entry |= {"rank": 0, "kind": "current"}
+    backfill.append_jsonl(store.root / "api" / "plan.jsonl", [entry])
+    status = {"plan_index": 0, "status": "ok", "days": 1, "first": "2025-01-01"}
+    backfill.append_jsonl(
+        store.root / "api" / "status.jsonl", [status | {"last": covered_until.isoformat()}]
+    )
+    backfill.write_json(store.root / "api" / "progress.json", {"next": 1})
+    return store
+
+
+def test_daily_runs_every_step(make_client, tmp_path):
+    store = _store_with_q1(tmp_path, [OLD_DAY], OLD_DAY)
     client, _session = make_client(handler)
     lines: list[str] = []
     out = daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lines.append)
@@ -101,21 +116,53 @@ def test_daily_runs_every_step(make_client, tmp_path):
         "dp",
         "api",
     ]
-    assert out["portal"]["read"] == 1
+    assert out["portal"]["read"] == 7  # March 13 to 19: every day after the last one read
     assert out["reread"]["due"] == 1  # the 7-day re-read of March 12
     assert out["links"]["new_items"] == 1
     assert out["dp"]["download"]["downloaded"] == 8  # the week of retries plus the new day
-    assert out["dp"]["refilter"]["days"] == 7
-    # New item Q2: English and German; follow-up for Q1 (its event is 7 days old).
-    plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
-    assert [(p["qid"], p["project"], p.get("follow_up")) for p in plan] == [
-        ("Q2", "en.wikipedia", None),
-        ("Q2", "de.wikipedia", None),
-        ("Q1", "en.wikipedia", 7),
+    assert out["dp"]["filter"]["days"] == 8  # filtered again for the new item
+    # New item Q2: English and German over the whole span; Q1's 7-day follow-up for its
+    # March 12 event, from the day before its last fetched day.
+    plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")[1:]
+    assert [(p["qid"], p["project"], p.get("span_start"), p.get("span_end")) for p in plan] == [
+        ("Q2", "en.wikipedia", "2025-01-01", "2025-03-19"),
+        ("Q2", "de.wikipedia", "2025-01-01", "2025-03-19"),
+        ("Q1", "en.wikipedia", "2025-03-11", "2025-03-19"),
     ]
     assert out["api"]["calls"] == 3
     again = daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lambda m: None)
-    assert again["links"]["new_items"] == 0 and again["api"]["planned"] == 1
+    assert again["links"]["new_items"] == 0 and again["api"]["planned"] == 0
+
+
+def test_daily_catches_up_after_missed_days(make_client, tmp_path):
+    # Read up to March 5 and fetched up to March 5; the next run comes on March 20.
+    read = [date(2025, 3, 1) + timedelta(days=k) for k in range(5)]
+    store = _store_with_q1(tmp_path, read, date(2025, 3, 5))
+    client, _ = make_client(handler)
+    out = daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lambda m: None)
+    assert out["portal"]["read"] == 14 and out["portal"]["from"] == "2025-03-06"
+    assert out["dp"]["from"] == "2025-03-12"  # no file known yet: the last week
+    follow = [
+        p for p in backfill.read_jsonl(store.root / "api" / "plan.jsonl") if p.get("follow_up")
+    ]
+    # One call for Q1 closes the gap from its earliest due event (March 1) to March 19.
+    assert [(p["qid"], p["span_start"], p["span_end"]) for p in follow] == [
+        ("Q1", "2025-03-01", "2025-03-19")
+    ]
+
+
+def test_follow_ups_due_close_the_gap_and_skip_covered_items():
+    by_day = {date(2025, 3, 1): {"Q1", "Q2", "Q3"}, date(2025, 3, 15): {"Q2"}}
+    covered = {
+        ("Q1", "en.wikipedia"): (date(2025, 1, 1), date(2025, 3, 29)),  # reaches day 28
+        ("Q2", "en.wikipedia"): (date(2025, 1, 1), date(2025, 3, 3)),
+    }
+    due, unseen = daily.follow_ups_due(by_day, covered, date(2025, 3, 30))
+    # Q2: its March 1 event is due (day 7 and day 28 not reached); Q3 has no series.
+    assert due == {"Q2": date(2025, 3, 1)} and unseen == {"Q3"}
+    covered[("Q2", "en.wikipedia")] = (date(2025, 1, 1), date(2025, 2, 20))
+    due, _ = daily.follow_ups_due(by_day, covered, date(2025, 3, 30))
+    assert due == {"Q2": date(2025, 2, 19)}  # no gap: from the day before its last day
 
 
 def test_follow_up_updates_only_its_days(tmp_path):
