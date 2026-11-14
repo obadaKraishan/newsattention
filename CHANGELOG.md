@@ -22,6 +22,13 @@ All notable changes to this project are documented here. The format follows
 - `country_status`: when neither day 0 nor day 1 has a row and one of them has no country file,
   the status is `insufficient_files`, not `not_published`.
 - The `pages` table lists only articles that a current event links.
+- Roles (`newsattention.roles`, rule version 1): every event page gets `event` (the article
+  about this happening, at most one per event), `story` (the larger ongoing story) or
+  `context`, with a confidence (`high`, `medium`, `low`) from how many stored signals agree:
+  page creation against the event day, moves into the articles, the Wikidata class (by the
+  head word of its English label), the event's year in the title, words shared with the
+  event's text, a jump in views, and whether the text or a story heading links it. No model.
+  `event_pages` gains `role_confidence`.
 - `api-backfill --max-calls N` stops at the first chunk boundary after N calls, so a long run
   can be done in slices and another command can take the lock in between.
 - Review sheets (`newsattention.review`): `.xlsx` workbooks written with the standard library,

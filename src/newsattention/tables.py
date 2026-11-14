@@ -26,7 +26,7 @@ import pyarrow as pa
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
-from newsattention import backfill, measures
+from newsattention import backfill, measures, roles
 from newsattention.backfill import EN, Store
 
 Say = Callable[[str], None]
@@ -72,6 +72,7 @@ EVENT_PAGES_SCHEMA = pa.schema(
         ("in_text", pa.bool_()),
         ("story_level", pa.int16()),
         ("role", pa.string()),
+        ("role_confidence", pa.string()),
     ]
 )
 
@@ -112,6 +113,7 @@ def build_events(store: Store, out: Path) -> dict[str, int]:
             pg["in_text"].append(link["in_text"])
             pg["story_level"].append(link.get("story_level"))
             pg["role"].append("unknown")
+            pg["role_confidence"].append(None)
             pg_date.append(date.fromisoformat(day["day"]))
     n_events = _write_by_month(ev, EVENTS_SCHEMA, out / "events", "date")
     pg["_d"] = pg_date
@@ -660,3 +662,96 @@ def build_attention(
 def json_dump(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, default=str) + "\n")
+
+
+def page_facts(store: Store, out: Path) -> dict[int, roles.PageFacts]:
+    """Creation estimate, moves into the articles and Wikidata class kind of each linked page."""
+    pages = pq.read_table(out / "pages.parquet", columns=["page_id", "qid", "created_estimate"])
+    item_classes, classes = backfill.load_classes(store)
+    ids = set(pages["page_id"].to_pylist())
+    into: dict[int, list[date]] = defaultdict(list)
+    for pid, moves in backfill.load_moves(store, ids).items():
+        for m in moves:
+            if m.get("to_ns") == 0 and m.get("from_ns") != 0:
+                into[pid].append(date.fromisoformat(m["timestamp"][:10]))
+    facts = {}
+    for pid, qid, created in zip(
+        pages["page_id"].to_pylist(),
+        pages["qid"].to_pylist(),
+        pages["created_estimate"].to_pylist(),
+        strict=True,
+    ):
+        kind = roles.class_kind(item_classes.get(qid, []), classes)[0] if qid else None
+        facts[pid] = roles.PageFacts(created, tuple(into.get(pid, [])), kind)
+    return facts
+
+
+def compute_roles(
+    store: Store, out: Path
+) -> tuple[dict[Path, list[dict[str, Any]]], dict[str, list[tuple[str, str]]], dict[str, Any]]:
+    """Roles for every event page, without writing: ``(rows by file, roles by event, events)``."""
+    events = {
+        r["event_id"]: r
+        for r in ds.dataset(str(out / "events"), format="parquet")
+        .to_table(columns=["event_id", "date", "category", "text"])
+        .to_pylist()
+    }
+    summaries = {}
+    summ = ds.dataset(str(out / "attention_summary"), format="parquet").to_table(
+        columns=[
+            "event_id",
+            "qid",
+            "project",
+            "baseline",
+            "lift_day0",
+            "lift_day1",
+            "peak_day",
+            "peak_views",
+        ]
+    )
+    for r in summ.to_pylist():
+        if r["project"] == EN:
+            summaries[(r["event_id"], r["qid"])] = r
+    facts = page_facts(store, out)
+    all_roles: dict[str, list[tuple[str, str]]] = {}
+    files: dict[Path, list[dict[str, Any]]] = {}
+    for path in sorted((out / "event_pages").glob("*.parquet")):
+        rows = pq.read_table(path).to_pylist()
+        by_event: dict[str, list[int]] = defaultdict(list)
+        for i, r in enumerate(rows):
+            by_event[r["event_id"]].append(i)
+        for eid, idx in by_event.items():
+            idx.sort(key=lambda i: rows[i]["link_order"])
+            ev = events[eid]
+            links = [rows[i] for i in idx]
+            sigs = [
+                roles.signals(
+                    ev["date"],
+                    ev["text"],
+                    link,
+                    facts.get(link["page_id"]) if link["page_id"] else None,
+                    summaries.get((eid, link["qid"])),
+                )
+                for link in links
+            ]
+            assigned = roles.assign(links, sigs)
+            all_roles[eid] = assigned
+            for i, (role, conf) in zip(idx, assigned, strict=True):
+                rows[i]["role"] = role
+                rows[i]["role_confidence"] = conf
+        files[path] = rows
+    return files, all_roles, events
+
+
+def build_roles(store: Store, out: Path, say: Say = print) -> dict[str, Any]:
+    """Give every event page its role and confidence (rewrites ``event_pages``)."""
+    files, all_roles, events = compute_roles(store, out)
+    for path, rows in files.items():
+        tmp = path.with_name(path.name + ".part")
+        table = pa.Table.from_pylist(rows, schema=EVENT_PAGES_SCHEMA)
+        pq.write_table(table, tmp, compression="zstd")
+        tmp.replace(path)
+    stats = roles.summarize(events, all_roles)
+    json_dump(out / "roles_summary.json", stats)
+    say(f"roles: {stats['roles']}; events {stats['events_have']}")
+    return {"roles": stats["roles"], "events_have": stats["events_have"]}

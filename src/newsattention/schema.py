@@ -187,7 +187,14 @@ class EventPage(_Frozen):
         ge=1,
         description="For story links, headings up from the event (1 is the nearest)",
     )
-    role: Literal["unknown", "event", "context"] = "unknown"
+    role: Literal["unknown", "event", "story", "context"] = Field(
+        default="unknown",
+        description="event: the article about this happening; story: the larger ongoing story; "
+        "context: anything else (a rule, see docs/method.md)",
+    )
+    role_confidence: Literal["high", "medium", "low"] | None = Field(
+        default=None, description="How many of the rule's signals agree with the role"
+    )
 
     @field_validator("event_id")
     @classmethod

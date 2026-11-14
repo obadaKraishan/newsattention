@@ -203,6 +203,8 @@ def test_build_everything_on_a_tiny_store(tmp_path):
         status["FL"]["baseline_file_days"] == 28 and status["FL"]["baseline_published_days"] == 28
     )
     assert status["OL"]["country_status"] == "appeared"
+    roles_out = tables.build_roles(store, out, say=lambda m: None)
+    assert sum(roles_out["roles"].values()) == 2
     for path in sorted(out.rglob("*.parquet")):
         report = validate_file(path)
         assert report.ok, (path, report.errors)

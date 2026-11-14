@@ -301,6 +301,7 @@ def cmd_tables(args: argparse.Namespace) -> int:
     summary.update(tables.write_views_api(bank, out))
     summary.update(tables.write_series(bank, out, args.end))
     summary.update(tables.build_attention(store, out, bank, args.end))
+    summary.update(tables.build_roles(store, out))
     tables.json_dump(out / "build_summary.json", summary)
     _print(summary)
     return 0
