@@ -250,14 +250,28 @@ def cmd_review_sheets(args: argparse.Namespace) -> int:
             links.setdefault(r["event_id"], []).append(r)
     for rows in links.values():
         rows.sort(key=lambda r: r["link_order"])
-    found = {eid: any(role == "event" for role, _ in rs) for eid, rs in all_roles.items()}
+    found = {
+        eid: any(role == "event" for role, _ in rs)
+        for eid, rs in all_roles.items()
+        if args.through is None or events[eid]["date"] <= args.through
+    }
     exclude = []
     if args.exclude and args.exclude.exists():
         exclude = json.loads(args.exclude.read_text())
-    ids = review.draw_sample(found, args.seed, exclude=exclude)
     out = args.out
+    there = sorted(out.glob("sheet-*.xlsx")) if out.exists() else []
+    if there:
+        raise SystemExit(
+            f"{out} already holds {len(there)} review sheet(s) ({there[0].name}, ...). Filled "
+            f"answers would be lost: move the folder aside before drawing again."
+        )
+    draws = review.draw_design(found, args.seed, exclude=exclude)
+    ids = [d.event_id for d in draws]
+    drawn = {d.event_id: d for d in draws}
+    classes = len(backfill.read_jsonl(store.root / "wikidata" / "instance_of.jsonl"))
     out.mkdir(parents=True, exist_ok=True)
     key = []
+    design = []
     for k, batch in enumerate(review.split(ids, 50), 1):
         sheet_events = []
         for n, eid in enumerate(batch, 1):
@@ -282,12 +296,16 @@ def cmd_review_sheets(args: argparse.Namespace) -> int:
                 ),
                 None,
             )
+            d = drawn[eid]
+            place = {"sheet": f"sheet-{k}.xlsx", "number": n, "event_id": eid}
+            design.append(
+                {**place, "stratum": d.stratum, "probability": d.probability, "weight": d.weight}
+            )
             key.append(
                 {
-                    "sheet": f"sheet-{k}.xlsx",
-                    "number": n,
-                    "event_id": eid,
+                    **place,
                     "rule_version": roles.RULE_VERSION,
+                    "stratum": d.stratum,
                     "stratum_event_found": found[eid],
                     "Q1": event_link or "none",
                     "Q2": roles.main_story(rows, assigned) or "none",
@@ -295,8 +313,45 @@ def cmd_review_sheets(args: argparse.Namespace) -> int:
                 }
             )
         review.write_sheet(out / f"sheet-{k}.xlsx", sheet_events, review.GUIDE)
+    strata: dict[str, dict[str, Any]] = {}
+    for d in draws:
+        strata[d.stratum] = {
+            "stratum": d.stratum,
+            "year": d.year,
+            "event_found": d.found,
+            "size": d.stratum_size,
+            "drawn": d.stratum_drawn,
+            "probability": d.probability,
+            "weight": d.weight,
+        }
+    skip = set(exclude)
+    frame_days = sorted(events[e]["date"] for e in found if e not in skip)
+    frame = {
+        "definition": (
+            "events with at least one linked page, through the last day below, minus the "
+            "excluded development events; stratum = year and whether the rule found an event page"
+        ),
+        "events": len(frame_days),
+        "first_day": frame_days[0].isoformat(),
+        "last_day": frame_days[-1].isoformat(),
+        "excluded": len(exclude),
+        "excluded_in_frame": len(skip & set(found)),
+        "digest_sha256": review.frame_digest(found, exclude),
+    }
+    common = {
+        "seed": args.seed,
+        "rule_version": roles.RULE_VERSION,
+        "items_with_classes": classes,
+    }
+    backfill.write_json(args.key, {**common, "events": key})
     backfill.write_json(
-        args.key, {"seed": args.seed, "rule_version": roles.RULE_VERSION, "events": key}
+        args.design,
+        {
+            **common,
+            "frame": frame,
+            "strata": [strata[s] for s in sorted(strata)],
+            "events": design,
+        },
     )
     (out / "guide.md").write_text("\n\n".join(review.GUIDE) + "\n", encoding="utf-8")
     _print(
@@ -304,7 +359,10 @@ def cmd_review_sheets(args: argparse.Namespace) -> int:
             "events": len(ids),
             "sheets": len(review.split(ids, 50)),
             "found": sum(found[e] for e in ids),
+            "frame": frame["events"],
+            "items_with_classes": classes,
             "key": str(args.key),
+            "design": str(args.design),
             "excluded": len(exclude),
         }
     )
@@ -476,6 +534,13 @@ def register(sub: Any) -> None:
     p.add_argument("--out", type=Path, default=Path("data/interim/sheets"))
     p.add_argument("--key", type=Path, default=Path("data/interim/answer-key/answer_key.json"))
     p.add_argument("--seed", type=int, default=20261114)
+    p.add_argument(
+        "--design",
+        type=Path,
+        default=Path("data/interim/answer-key/sample_design.json"),
+        help="where to write each drawn event's stratum and probability of being drawn",
+    )
+    p.add_argument("--through", type=date.fromisoformat, help="last event day in the frame")
     p.add_argument("--exclude", type=Path, help="JSON list of event ids to leave out")
     p.set_defaults(func=cmd_review_sheets)
 

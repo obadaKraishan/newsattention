@@ -389,6 +389,75 @@ def check_sheet(path: Path | str) -> SheetCheck:
 YEAR_SIZES = {2023: 38, 2024: 38, 2025: 37, 2026: 37}
 
 
+@dataclass(frozen=True)
+class Draw:
+    """One event drawn for the review, with its stratum and its chance of being drawn.
+
+    A stratum is a year and whether the rule found an ``event`` page for the event
+    (``2024-found``, ``2024-not-found``). ``stratum_size`` events of the frame are in it and
+    ``stratum_drawn`` of them were drawn at random, so each had the same chance,
+    ``probability``; ``weight`` (its inverse) is how many frame events the drawn one stands for.
+    """
+
+    event_id: str
+    year: int
+    found: bool
+    stratum: str
+    stratum_size: int
+    stratum_drawn: int
+
+    @property
+    def probability(self) -> float:
+        return self.stratum_drawn / self.stratum_size
+
+    @property
+    def weight(self) -> float:
+        return self.stratum_size / self.stratum_drawn
+
+
+def stratum_of(year: int, found: bool) -> str:
+    return f"{year}-{'found' if found else 'not-found'}"
+
+
+def frame_digest(found: dict[str, bool], exclude: Iterable[str] = ()) -> str:
+    """SHA-256 of the sampling frame (event ids and their stratum flag), to check a redraw."""
+    import hashlib
+
+    skip = set(exclude)
+    lines = (f"{e}\t{int(found[e])}\n" for e in sorted(found) if e not in skip)
+    return hashlib.sha256("".join(lines).encode("utf-8")).hexdigest()
+
+
+def draw_design(
+    found: dict[str, bool],
+    seed: int,
+    year_sizes: dict[int, int] | None = None,
+    exclude: Iterable[str] = (),
+) -> list[Draw]:
+    """The seeded, stratified draw, in random order (see :func:`draw_sample`)."""
+    import random
+
+    rng = random.Random(seed)
+    sizes = year_sizes or YEAR_SIZES
+    skip = set(exclude)
+    chosen: list[Draw] = []
+    for year, size in sorted(sizes.items()):
+        pool = sorted(e for e in found if e.startswith(f"{year}-") and e not in skip)
+        yes = [e for e in pool if found[e]]
+        no = [e for e in pool if not found[e]]
+        n_yes = size // 2 + (size % 2 if year % 2 == 0 else 0)
+        n_no = size - n_yes
+        if len(yes) < n_yes or len(no) < n_no:
+            raise ValueError(f"{year}: too few events to sample ({len(yes)} found, {len(no)} not)")
+        for flag, members, n in ((True, yes, n_yes), (False, no, n_no)):
+            chosen += [
+                Draw(e, year, flag, stratum_of(year, flag), len(members), n)
+                for e in rng.sample(members, n)
+            ]
+    rng.shuffle(chosen)
+    return chosen
+
+
 def draw_sample(
     found: dict[str, bool],
     seed: int,
@@ -400,25 +469,9 @@ def draw_sample(
     ``found`` maps every eligible event id (``YYYY-MM-DD-...``) to whether the rule gives it an
     ``event`` page. Within a year the larger half goes to "found" in even years and to "not
     found" in odd years, so the two strata are even over the whole sample. The result is in
-    random order.
+    random order. The same ``found``, ``seed`` and ``exclude`` always give the same draw.
     """
-    import random
-
-    rng = random.Random(seed)
-    sizes = year_sizes or YEAR_SIZES
-    skip = set(exclude)
-    chosen: list[str] = []
-    for year, size in sorted(sizes.items()):
-        pool = sorted(e for e in found if e.startswith(f"{year}-") and e not in skip)
-        yes = [e for e in pool if found[e]]
-        no = [e for e in pool if not found[e]]
-        n_yes = size // 2 + (size % 2 if year % 2 == 0 else 0)
-        n_no = size - n_yes
-        if len(yes) < n_yes or len(no) < n_no:
-            raise ValueError(f"{year}: too few events to sample ({len(yes)} found, {len(no)} not)")
-        chosen += rng.sample(yes, n_yes) + rng.sample(no, n_no)
-    rng.shuffle(chosen)
-    return chosen
+    return [d.event_id for d in draw_design(found, seed, year_sizes, exclude)]
 
 
 def split(ids: Sequence[str], size: int = 50) -> list[list[str]]:

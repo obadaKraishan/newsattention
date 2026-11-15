@@ -311,10 +311,23 @@ def test_review_sheets_command_writes_blind_sheets_and_a_separate_key(tmp_path, 
     tables.build_attention(store, out, bank, LAST, say=lambda m: None)
     monkeypatch.setattr(review, "YEAR_SIZES", {2025: 1})
     key = tmp_path / "key" / "answer_key.json"
+    design = tmp_path / "key" / "sample_design.json"
     sheets = tmp_path / "sheets"
     argv = ["review-sheets", "--store", str(store.root), "--raw", str(store.raw)]
     argv += ["--tables", str(out), "--out", str(sheets), "--key", str(key)]
+    argv += ["--design", str(design), "--through", LAST.isoformat()]
     assert cli.main(argv) == 0
+    plan = json.loads(design.read_text())
+    (stratum,) = plan["strata"]
+    assert stratum["stratum"] == "2025-not-found" and stratum["drawn"] == 1
+    assert stratum["probability"] == 1 / stratum["size"] and plan["frame"]["events"] >= 1
+    assert plan["events"][0]["stratum"] == "2025-not-found"
+    assert plan["events"][0]["probability"] == stratum["probability"]
+    assert plan["items_with_classes"] == 0 and len(plan["frame"]["digest_sha256"]) == 64
+    import pytest
+
+    with pytest.raises(SystemExit, match="already holds 1 review sheet"):
+        cli.main(argv)
     assert sorted(p.name for p in sheets.iterdir()) == ["guide.md", "sheet-1.xlsx"]
     roles_argv = [
         "roles",

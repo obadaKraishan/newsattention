@@ -115,3 +115,34 @@ def test_too_few_events_for_a_stratum_is_a_plain_error():
 
     with pytest.raises(ValueError, match="2023: too few events"):
         review.draw_sample({"2023-01-01-aaaaaaaa": True}, seed=1)
+
+
+def test_each_draw_records_its_stratum_and_its_chance_of_being_drawn():
+    found = {f"{y}-0{m}-{d:02d}-{k:08x}": (d + k) % 4 == 0 for y in (2023, 2024, 2025, 2026)
+             for m in (1, 2) for d in range(1, 29) for k in range(3)}  # fmt: skip
+    skip = sorted(found)[:5]
+    draws = review.draw_design(found, seed=11, exclude=skip)
+    assert [d.event_id for d in draws] == review.draw_sample(found, seed=11, exclude=skip)
+    for d in draws:
+        members = [e for e in found if e.startswith(f"{d.year}-") and found[e] == d.found]
+        members = [e for e in members if e not in skip]
+        assert d.stratum == f"{d.year}-{'found' if d.found else 'not-found'}"
+        assert d.stratum_size == len(members) and d.probability == d.stratum_drawn / len(members)
+        assert found[d.event_id] == d.found and d.event_id not in skip
+    by_stratum: dict[str, float] = {}
+    for d in draws:
+        by_stratum[d.stratum] = by_stratum.get(d.stratum, 0) + d.weight
+    sizes = {d.stratum: d.stratum_size for d in draws}
+    assert len(by_stratum) == 8
+    assert all(abs(by_stratum[s] - sizes[s]) < 1e-9 for s in sizes)  # weights add up to the frame
+    assert sum(d.stratum_drawn for d in {d.stratum: d for d in draws}.values()) == 150
+
+
+def test_the_frame_digest_checks_a_redraw():
+    found = {"2025-01-01-aaaaaaaa": True, "2025-01-02-bbbbbbbb": False}
+    digest = review.frame_digest(found)
+    assert digest == review.frame_digest(dict(reversed(found.items())))
+    assert digest != review.frame_digest({**found, "2025-01-02-bbbbbbbb": True})
+    assert review.frame_digest(found, exclude=["2025-01-02-bbbbbbbb"]) == review.frame_digest(
+        {"2025-01-01-aaaaaaaa": True}
+    )
