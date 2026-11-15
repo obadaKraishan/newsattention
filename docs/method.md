@@ -209,12 +209,30 @@ story articles with a year in the title also jump, that renamed pages look new, 
 articles about people or companies are not the event. Version 1 answers these with the story
 heading, the moves into the articles, and the Wikidata class.
 
-**Validation.** A seeded sample of 150 events (spread evenly over 2023 to 2026, half where
-the rule finds an `event` page) is checked by hand, blind to the rule, against two questions:
-which link is the article about the event itself, and which is the article about the larger
-story. The rule is fixed before the sample is drawn and is not changed on the sampled events.
-With 150 events the 95% interval around an accuracy of 90% is about ±5 points. Until the sheets
-are scored, the roles stay DRAFT.
+**Validation.** A seeded sample of 150 events is checked by hand, blind to the rule, against
+two questions: which link is the article about the event itself, and which is the article
+about the larger story. The rule is fixed before the sample is drawn and is not changed on the
+sampled events.
+
+- **Frame.** The 21,795 events from 2023-02-06 to 2026-11-12 that link at least one page,
+  minus the 20 events read while the rule was being written.
+- **Strata.** Eight: the event's year, and whether rule version 1 finds an `event` page for it
+  (16.2% of the frame do). The sample takes 37 or 38 events per year and, over the four years,
+  75 from each side, drawn at random within each stratum (seed 20261114). The sheets list them
+  in random order.
+- **Weights.** Each sampled event records its stratum and its chance of being drawn (the
+  stratum's draws divided by its size, from 1 in 37 to 1 in 320). Estimates over all events
+  weight each answer by the inverse of that chance. The strata only set the chances, so any
+  later rule is scored against the same answers with the same weights.
+- **Precision.** At an accuracy of 90%, the weighted estimate over all events is within about
+  ±5 points at 90% confidence (±6 at 95%; the unequal weights make the sample worth about 99
+  events drawn at random). Each half (75 events) alone is within about ±6 points at 90%.
+- **Without the Wikidata classes.** The sample was drawn with rule version 1 while Wikidata's
+  classes could not be fetched (Wikidata reported more lag than the 5 seconds a polite client
+  accepts, for more than a day), so neither class signal took part in the strata or in the
+  rule's answers kept so far. The rule is scored again once the classes are in.
+
+Until the sheets are scored, the roles stay DRAFT.
 
 ## 5. Known gaps
 - **Events with no article.** Some events link only to general pages; their attention is only

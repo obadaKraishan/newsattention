@@ -102,8 +102,10 @@ answers kept as Parquet, 0.14 GB of move log and 10 MB of portal pages.
   an old title that became another article are left out, and moves in other language editions
   are not followed.
 - Roles: which link is the event's own article and which the larger story come from a rule
-  (no model), with a confidence; it is checked by hand on a sample of 150 events before the
-  roles leave DRAFT.
+  (no model), with a confidence; it is checked by hand on a weighted sample of 150 events
+  before the roles leave DRAFT. The roles built so far do not use Wikidata classes yet (they
+  could not be fetched while Wikidata was lagged), so new articles about people or companies
+  can still be taken for the event's own article.
 
 ## Ethics
 See [ethics](ethics.md).

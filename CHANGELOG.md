@@ -35,7 +35,10 @@ All notable changes to this project are documented here. The format follows
   can be done in slices and another command can take the lock in between.
 - `review-sheets`: draws the hand-checked sample (150 events, seeded, spread evenly over 2023 to
   2026, half where the rule finds an `event` page), writes three blind sheets of 50 and a guide,
-  and keeps the rule's answers in a separate answer key that the sheets never reference.
+  and keeps the rule's answers in a separate answer key that the sheets never reference. A
+  separate design file records the frame, the strata and each sampled event's chance of being
+  drawn, so later rules can be scored with weights; `--through` ends the frame on a given day,
+  and the command refuses to draw again over existing sheets.
 - Review sheets (`newsattention.review`): `.xlsx` workbooks written with the standard library,
   with a guide tab and one block per event (date, category, text, numbered links that open the
   article) and two dropdowns per event; `review-check FILE...` reads filled sheets back and
