@@ -27,10 +27,18 @@ to D-1 from wherever it stopped, so a missed day, or a week of them, costs nothi
    the rows of linked items; when new items appear, the last 29 files are filtered again so
    they have a baseline.
 5. **Language views.** For an item with no series yet: English and up to five other languages
-   over the whole span, and the old titles of a moved English page. For an item whose event
-   is 7 or 28 days old and whose English series does not reach that day: one call that closes
-   the gap, plus its old titles that redirect to it. The first live run (2026-11-14, for
-   2026-11-13) made 215 calls: 14 for 10 new items and 201 follow-ups.
+   over the whole span, and the old titles of a moved English page. For a linked English
+   article with no Wikidata item: an English call by title over the span, its series named by
+   the page id. Then the follow-ups, each one call that closes a series' gap up to D-1:
+   - **English**, when an event is 1, 7 or 28 days old and the series does not reach that
+     day, plus the old titles that redirect to the page. The day-1 follow-up brings the day-0
+     views of an item already in the plan on the next day.
+   - **Every other language once**, when an event is 27 days old (days 0 to 27, on the 28th
+     day). Other-language measures of an event are therefore complete 28 days after it, while
+     English measures are current from the next day.
+
+   The first live run (2026-11-14, for 2026-11-13) made 215 calls: 14 for 10 new items and 201
+   follow-ups.
 6. **Measures and checks** (`newsattention tables` and `validate`): the job rebuilds the tables;
    any failure stops it before anything is published and opens an issue with the counts.
 7. **Publish** (only after the first release is approved, see below).

@@ -7,6 +7,32 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `review-key`: the rule's answers for the sampled events from the current code, with the
+  Wikidata classes or without them (`--without-classes`), recording the rule's version and the
+  SHA-256 of `roles.py`; it refuses when the tables show an event's links otherwise than its
+  sheet did.
+- `review-score`: compares the rule's answers with filled sheets. For each question it gives
+  the weighted share right over all events, with a 90% interval from a stratified bootstrap,
+  by stratum, year and the rule's confidence, and the three kinds of difference (the rule
+  names a link where the hand answer is none, the reverse, or both name different links). It
+  prints and writes aggregates only; `--differences` also writes the differences by event
+  number (no titles, no text). It refuses a key made with another `roles.py`, and with
+  `--freeze` a `roles.py` other than the frozen one.
+- `review-recheck`: a blind copy of some sampled events for a second pass by the same reader,
+  drawn within the strata in proportion to the sample (seeded, without looking at any answer),
+  in a new order with new numbers, and its key in a separate file.
+- `daily` follows English series up at days 1, 7 and 28 (the day-1 follow-up is new: day-0
+  views of an item already in the plan arrive the next day instead of a week later), and every
+  other language once, at day 27 of an event (days 0 to 27, on the 28th day). Other-language
+  measures of an event are complete 28 days after it.
+- Linked English articles with no Wikidata item get an English call by title over the span and
+  the same follow-ups; their series is named by the page id.
+
+### Changed
+- `series`, `attention` and `attention_summary` gain a `page_id` column, and `qid` may be empty
+  in `views_api`, `series`, `attention` and `attention_summary`: such a row is an English
+  article with no Wikidata item, named by its page id. A page-id series is left out once the
+  article has an item, since its views are then under the item.
 - The portal parser renders the six templates the backfill met without a rule (`#expr`,
   `AFL`, `INRConvert`, `Renminbi`, `circa`, and `unreliable inline`, which is dropped).
 - One Wikimedia command at a time: every command that sends requests takes a lock on one file

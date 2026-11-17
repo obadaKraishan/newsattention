@@ -21,6 +21,12 @@ API, the country files and Wikidata are CC0, and Wikipedia's contributors waive 
 rights in facts), and only the event text is CC BY-SA 4.0. A table that joins `events` with
 any other table and is shared is an adaptation and carries CC BY-SA 4.0.
 
+Views and measures are keyed by the Wikidata item (`qid`) and the language edition. A linked
+English article with no Wikidata item has its English views under its `page_id`, with an empty
+`qid`, in `views_api`, `series`, `attention` and `attention_summary` (in `views_dp`, `page_id`
+is the page of the published row). Once such an article has an item, its views are under the
+item instead.
+
 ## Dataset card metadata (sketch)
 ```yaml
 license:
@@ -56,4 +62,7 @@ line, and the corrections route (the repository's issue form).
 ## Updates
 Monthly files of the current and the previous month change every day (new events, re-reads at
 7 and 30 days, follow-up views); older months change only when a 30-day re-read lands in them.
+English views of an event are fetched again the day after it and at 7 and 28 days, other
+languages once more at its day 27, so other-language measures of an event are complete 28
+days after it.
 Each upload records the build summary (row counts, the last day covered, the request counts).
