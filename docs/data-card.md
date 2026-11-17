@@ -91,7 +91,9 @@ answers kept as Parquet, 0.14 GB of move log and 10 MB of portal pages.
 - The portal's events are an editorial selection by volunteers and lean toward
   English-language news.
 - Most links point to general pages (a country, a party); which page is the event's own
-  article is decided by a rule, with a known error rate (to fill).
+  article is decided by a rule. Against a weighted hand-checked sample of 150 events, rule
+  version 1 (without Wikidata classes) is right for 82% of events on the event's own article
+  and 71% on the larger story, below its 90% target (see the method).
 - Known gaps in the country files: United States rows from 2023-02-06 to 2023-09-19 come from
   Wikimedia's older method (threshold 450), as do every country's rows on seven days of 2023;
   countries of medium and higher risk only from 2024-02-15; an empty file for 2026-11-08 (as
@@ -107,10 +109,14 @@ answers kept as Parquet, 0.14 GB of move log and 10 MB of portal pages.
   an old title that became another article are left out, and moves in other language editions
   are not followed.
 - Roles: which link is the event's own article and which the larger story come from a rule
-  (no model), with a confidence; it is checked by hand on a weighted sample of 150 events
-  before the roles leave DRAFT. The roles built so far do not use Wikidata classes yet (they
-  could not be fetched while Wikidata was lagged), so new articles about people or companies
-  can still be taken for the event's own article.
+  (no model), with a confidence, and stay DRAFT. On the hand-checked sample, when the rule
+  names an `event` page it is that event's own article for about 36% of events: it often takes
+  a recent article about a happening that lasts days or weeks (protests, floods, a battle, a
+  crisis) for the event's own article, where the reviewer reads it as the larger story. The
+  confidence does not yet track how often a role is right. The roles do not use Wikidata
+  classes yet (they could not be fetched while Wikidata was lagged), so new articles about
+  people or organizations can still be taken for the event's own article, and the old article
+  of a scheduled event (an election) can be taken for the larger story.
 
 ## Ethics
 See [ethics](ethics.md).

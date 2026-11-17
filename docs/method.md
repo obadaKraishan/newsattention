@@ -165,7 +165,7 @@ language, age and access to the internet, so a low count can mean little interes
 use of Wikipedia. Bots that pass as human readers are filtered by Wikimedia's heuristics but
 not perfectly.
 
-## 4. The role of each linked page (DRAFT until the hand check is scored)
+## 4. The role of each linked page (DRAFT: version 1 scores below its target)
 Most links point to general pages. Every linked page of every event gets one role, by a rule
 that reads only stored signals (no model), with a confidence:
 
@@ -209,10 +209,10 @@ story articles with a year in the title also jump, that renamed pages look new, 
 articles about people or companies are not the event. Version 1 answers these with the story
 heading, the moves into the articles, and the Wikidata class.
 
-**Validation.** A seeded sample of 150 events is checked by hand, blind to the rule, against
-two questions: which link is the article about the event itself, and which is the article
-about the larger story. The rule is fixed before the sample is drawn and is not changed on the
-sampled events.
+**Validation.** A seeded sample of 150 events was checked by hand by the maintainer, blind to
+the rule, against two questions: which link is the article about the event itself (Q1), and
+which is the article about the larger story (Q2). The rule was fixed before the sample was
+drawn and was not changed on the sampled events.
 
 - **Frame.** The 21,795 events from 2023-02-06 to 2026-11-12 that link at least one page,
   minus the 20 events read while the rule was being written.
@@ -227,12 +227,65 @@ sampled events.
 - **Precision.** At an accuracy of 90%, the weighted estimate over all events is within about
   ±5 points at 90% confidence (±6 at 95%; the unequal weights make the sample worth about 99
   events drawn at random). Each half (75 events) alone is within about ±6 points at 90%.
-- **Without the Wikidata classes.** The sample was drawn with rule version 1 while Wikidata's
-  classes could not be fetched (Wikidata reported more lag than the 5 seconds a polite client
-  accepts, for more than a day), so neither class signal took part in the strata or in the
-  rule's answers kept so far. The rule is scored again once the classes are in.
+- **Without the Wikidata classes.** The sample was drawn, and version 1 was scored, without
+  the class signals: Wikidata reported more lag than the 5 seconds a polite client accepts at
+  every try (62 tries over 24 hours on 2026-11-14 and 15, and 6 over 3 hours on 2026-11-17, at
+  6 to 49 seconds), so no class was fetched. The variant with classes is the same frozen code,
+  to be run when the classes are in and scored against the same answers with the same weights.
+- **Development checks.** Before the freeze the rule was read against 40 random events outside
+  the sample: 20 while it was written, and 20 more drawn later (seed 2026111704). The second
+  reading found errors in both directions around the nearest story heading (a heading taken
+  for the story that is the event's own article, and the reverse) and no single signal that
+  separated them on those 40 events, so the rule was not changed.
+- **Freeze.** Version 1 was frozen on 2026-11-17 at 19:39:49 UTC, before any answer was read:
+  `roles.py` with SHA-256 `a5109464712a6c79324fe1125f6ef933a1b7afceeba03abf3cf09410e32f7ac8`.
+  The scoring command refuses an answer key made from any other `roles.py`. The rule stays as
+  it is until its variant with classes is scored; after that the sheets are a development set,
+  and a later version needs a new sample.
 
-Until the sheets are scored, the roles stay DRAFT.
+**Scores of version 1 without classes** (weighted over the frame; 90% intervals from a
+stratified bootstrap of 10,000 resamples, seed 20261117; target 90%):
+
+| | Q1: the event's own article | Q2: the larger story |
+|---|---|---|
+| Right, all events | **82.2%** (77.2 to 86.8) | **71.2%** (63.9 to 78.2) |
+| Right, events where the rule finds an `event` page | 36.0% (27.3 to 45.1) | 47.8% (38.6 to 57.2) |
+| Right, the other events | 91.1% (85.5 to 96.2) | 75.7% (67.2 to 83.8) |
+| By year, 2023 / 2024 / 2025 / 2026 | 83.4 / 73.3 / 86.2 / 85.3 | 76.4 / 61.5 / 80.7 / 67.8 |
+| Rule names a link, the hand answer is none | 9.9% of events | 17.2% |
+| The hand answer names a link, the rule none | 7.4% | 2.4% |
+| Both name a link, different ones | 0.4% | 9.3% |
+| Precision of the rule's link (ratio estimate) | 36.0% (27.1 to 45.0) | 58.9% (48.6 to 68.8) |
+| Recall of the hand answer's link | 42.7% (29.7 to 63.1) | 76.5% (68.4 to 83.4) |
+
+Both questions right together: 68.5% (61.2 to 75.4). Neither question meets the target: both
+intervals lie wholly below 90%. The hand answers name an own article for 37 of the 150 events,
+about 14% of all events once weighted, so answering "none" every time would be right for 86.4%
+(81.6 to 90.7) on Q1, more than the rule; for Q2 it would be right for 50.5%.
+
+By the rule's confidence, the rule's `event` page is right for 37% of events where it is
+`high` (58 events), 31% where `medium` (15) and 1 of 2 where `low`; its "none" is right for 91%.
+Its main story is right for 58% where `high`, 68% where `medium` and 16% where `low`; its "none"
+for 93%. So the confidence does not yet track how often the role is right. The maintainer added
+a note to 73 of the 150 events.
+
+**What version 1 gets wrong.**
+- Q1: the rule takes a recent article about a happening that lasts days or weeks (protests,
+  floods, a battle, a crisis, a state visit, a strike) for the event's own article, where the
+  reviewer keeps Q1 for that day's single happening and reads such an article as the larger
+  story (30 events). New articles about people, organizations or works linked from the text are
+  most of the rest. Of the rule's `event` pages that are the nearest heading, 13 of 22 created
+  on the event day or later were right, against 5 of 21 created 1 to 14 days before.
+- The rule misses the event's own article mainly for scheduled events (elections, a referendum,
+  an inauguration) whose article is the nearest heading and existed long before (6 of 7). For
+  Q2 it also takes general-topic headings (relations between two countries, human rights or
+  immigration in a country) for the larger story, where the reviewer sees background (9 events).
+
+**A recheck copy** of 30 sampled events (seed 20261117; 3 or 4 from each stratum, chosen
+without looking at any answer) is kept blind for a second pass by the same reader, on or after
+2026-11-24, to measure how often two passes agree.
+
+The roles stay DRAFT.
 
 ## 5. Known gaps
 - **Events with no article.** Some events link only to general pages; their attention is only
