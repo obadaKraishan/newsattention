@@ -27,6 +27,10 @@ All notable changes to this project are documented here. The format follows
   measures of an event are complete 28 days after it.
 - Linked English articles with no Wikidata item get an English call by title over the span and
   the same follow-ups; their series is named by the page id.
+- Docs: the method records the hand check of the roles as done (the frame, the weights, two
+  development checks, the freeze and the scores of rule version 1, which is below its 90%
+  target on both questions); the data card carries the build of 2026-11-17 and the roles'
+  measured limits; the automation page gives what a daily run costs.
 
 ### Changed
 - `series`, `attention` and `attention_summary` gain a `page_id` column, and `qid` may be empty

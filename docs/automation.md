@@ -38,7 +38,12 @@ to D-1 from wherever it stopped, so a missed day, or a week of them, costs nothi
      English measures are current from the next day.
 
    The first live run (2026-11-14, for 2026-11-13) made 215 calls: 14 for 10 new items and 201
-   follow-ups.
+   follow-ups. The run of 2026-11-17, with these follow-ups, caught up three days (2026-11-14
+   to 11-16) in 29 minutes with 2,054 calls and no error: 171 for 87 new items and 7 articles
+   with no item, 698 English follow-ups, 164 for old titles that redirect, and 1,021
+   other-language follow-ups (the 28-day follow-ups of four event days). A normal day is
+   therefore about 600 Analytics calls (about 8 minutes at the project's pace), a few Wikipedia
+   API requests and one country file of about 20 MB.
 6. **Measures and checks** (`newsattention tables` and `validate`): the job rebuilds the tables;
    any failure stops it before anything is published and opens an issue with the counts.
 7. **Publish** (only after the first release is approved, see below).
@@ -73,9 +78,10 @@ The state lives in the store (day files, the plan, its status and progress files
 ## Does it need a language model?
 Only for one question: which linked article is the event's own article. The portal links
 an event to many pages (6.4 on average in the prototype), most of them general pages such as a
-country or a political party. Rules may be enough (the article was created around the event,
-it is the nearest story heading, its views jump on the event day); a hand-checked sample will show how far they
-get on a hand-checked sample.
+country or a political party. Rules came first (the article was created around the event, it is the nearest story
+heading, its views jump on the event day). Against a weighted hand-checked sample of 150
+events, rule version 1 (without Wikidata classes) is right for 82% of events on the event's
+own article and 71% on the larger story, below its 90% target; see the method.
 
 If rules fall short:
 - **An open model** (Apache-2.0 or MIT, as the project's license rule requires for published

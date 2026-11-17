@@ -58,26 +58,28 @@ file against them.
   by hand, and no language model is used (to fill if one is added: model name and license).
 
 ## Size
-Version 1 as built on 2026-11-14 (portal days 2023-02-06 to 2026-11-12, views from 2023-01-09):
+Version 1 as built on 2026-11-17 (portal days 2023-02-06 to 2026-11-16, views from 2023-01-09):
 
-- 1,376 portal day pages, **21,821 events** (median 15 a day, from 8 to 25 for the middle 80%
+- 1,380 portal day pages, **21,886 events** (median 15 a day, from 8 to 25 for the middle 80%
   of days; 391 a month in 2023, 613 a month in 2026), with a median of 6 links each.
-- **33,417 linked items** (Wikidata ids) behind 37,265 linked titles; 4,941 of their English
-  pages were moved inside the span, and each of their series is joined across its titles.
-- Language views: 112,530 series (English and up to five other languages per item, 198
-  languages in all); country views: the rows of linked items in 1,375 daily files.
+- **33,514 linked items** (Wikidata ids) behind 37,375 linked titles, and 7 linked English
+  articles with no item; 4,960 English pages were moved inside the span, and each of their
+  series is joined across its titles.
+- Language views: 112,693 series (English and up to five other languages per item, 198
+  languages in all); country views: the rows of linked items in the daily files.
 
 | Table | Rows | Size (Parquet, zstd) |
 |---|---:|---:|
-| `events` | 21,821 | 2.4 MB |
-| `event_pages` | 128,516 | 2.4 MB |
-| `pages` | 33,425 | 1.0 MB |
-| `views_api` | 141,098,686 | 234.5 MB |
-| `views_dp` | 58,345,138 | 353.2 MB |
-| `attention` | 17,066,406 | 109.8 MB |
-| `attention_summary` | 595,301 | 17.7 MB |
-| `country_status` | 3,952,208 | 22.9 MB |
-| **all** | | **743.9 MB** |
+| `events` | 21,886 | 2.4 MB |
+| `event_pages` | 128,929 | 2.5 MB |
+| `pages` | 33,521 | 1.0 MB |
+| `views_api` | 141,275,572 | 234.6 MB |
+| `series` | 112,693 | 0.4 MB |
+| `views_dp` | 58,460,446 | 353.8 MB |
+| `attention` | 17,086,285 | 110.1 MB |
+| `attention_summary` | 596,896 | 17.8 MB |
+| `country_status` | 3,958,148 | 22.9 MB |
+| **all** | | **745.5 MB** |
 
 The sources behind it are about 32.6 GB: 32.2 GB of country files, 0.29 GB of Analytics API
 answers kept as Parquet, 0.14 GB of move log and 10 MB of portal pages.
