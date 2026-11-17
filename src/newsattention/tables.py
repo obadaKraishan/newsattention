@@ -664,10 +664,14 @@ def json_dump(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, indent=2, default=str) + "\n")
 
 
-def page_facts(store: Store, out: Path) -> dict[int, roles.PageFacts]:
-    """Creation estimate, moves into the articles and Wikidata class kind of each linked page."""
+def page_facts(store: Store, out: Path, use_classes: bool = True) -> dict[int, roles.PageFacts]:
+    """Creation estimate, moves into the articles and Wikidata class kind of each linked page.
+
+    With ``use_classes=False`` no page has a class kind, as if no class had been fetched: the
+    rule's variant without classes, scored against the same hand answers.
+    """
     pages = pq.read_table(out / "pages.parquet", columns=["page_id", "qid", "created_estimate"])
-    item_classes, classes = backfill.load_classes(store)
+    item_classes, classes = backfill.load_classes(store) if use_classes else ({}, {})
     ids = set(pages["page_id"].to_pylist())
     into: dict[int, list[date]] = defaultdict(list)
     for pid, moves in backfill.load_moves(store, ids).items():
@@ -687,7 +691,7 @@ def page_facts(store: Store, out: Path) -> dict[int, roles.PageFacts]:
 
 
 def compute_roles(
-    store: Store, out: Path
+    store: Store, out: Path, use_classes: bool = True
 ) -> tuple[dict[Path, list[dict[str, Any]]], dict[str, list[tuple[str, str]]], dict[str, Any]]:
     """Roles for every event page, without writing: ``(rows by file, roles by event, events)``."""
     events = {
@@ -712,7 +716,7 @@ def compute_roles(
     for r in summ.to_pylist():
         if r["project"] == EN:
             summaries[(r["event_id"], r["qid"])] = r
-    facts = page_facts(store, out)
+    facts = page_facts(store, out, use_classes)
     all_roles: dict[str, list[tuple[str, str]]] = {}
     files: dict[Path, list[dict[str, Any]]] = {}
     for path in sorted((out / "event_pages").glob("*.parquet")):

@@ -317,6 +317,23 @@ def read_cells(path: Path | str) -> dict[tuple[str, int], str]:
     return out
 
 
+def _event_blocks(cells: dict[tuple[str, int], str]) -> list[tuple[int, int]]:
+    """(first row, row after the block) of each event on the Events tab."""
+    starts = sorted(r for (c, r) in cells if c == "A" and r > 1)
+    end = max((rr for _, rr in cells), default=1) + 1
+    return [(r, starts[i + 1] if i + 1 < len(starts) else end) for i, r in enumerate(starts)]
+
+
+def sheet_links(path: Path | str) -> dict[str, list[str]]:
+    """Each event's link titles as the sheet shows them, by event id (no answer is read)."""
+    cells = read_cells(path)
+    out: dict[str, list[str]] = {}
+    for r, nxt in _event_blocks(cells):
+        rows = sorted(rr for (c, rr) in cells if c == "E" and r < rr < nxt)
+        out[cells.get(("J", r), f"row {r}")] = [cells.get(("F", rr), "") for rr in rows]
+    return out
+
+
 def _as_choice(value: str | None) -> str | int | None:
     if value is None:
         return None
@@ -347,10 +364,8 @@ class SheetCheck:
 def check_sheet(path: Path | str) -> SheetCheck:
     """Read a filled sheet back: two valid answers for every event, or what is wrong."""
     cells = read_cells(path)
-    starts = sorted(r for (c, r), v in cells.items() if c == "A" and r > 1)
     out = SheetCheck()
-    for i, r in enumerate(starts):
-        nxt = starts[i + 1] if i + 1 < len(starts) else max(rr for _, rr in cells) + 1
+    for r, nxt in _event_blocks(cells):
         n_links = sum(1 for (c, rr) in cells if c == "E" and r < rr < nxt)
         number = cells[("A", r)]
         out.events += 1
@@ -476,3 +491,52 @@ def draw_sample(
 
 def split(ids: Sequence[str], size: int = 50) -> list[list[str]]:
     return [list(ids[i : i + size]) for i in range(0, len(ids), size)]
+
+
+# The recheck copy ----------------------------------------------------------------------------
+
+
+def recheck_guide(not_before: str, size: int) -> list[str]:
+    """The guide of the recheck copy: the same instructions, with its own first line."""
+    first = (
+        f"Second pass, on or after {not_before}: {size} events you have seen before, in a new "
+        f"order (about {round(size * 0.8)} minutes). Please answer without looking at your first "
+        "sheets or notes: this copy measures how often two passes agree."
+    )
+    return [first, *GUIDE[1:]]
+
+
+def recheck_allocation(strata: Sequence[dict[str, Any]], size: int) -> dict[str, int]:
+    """Events per stratum for the recheck copy, in proportion to the events drawn in each.
+
+    Largest remainder: each stratum gets the whole part of its share, and the events left go
+    to the largest remainders (ties by stratum name). No answer is used.
+    """
+    total = sum(int(s["drawn"]) for s in strata)
+    if size > total:
+        raise ValueError(f"a recheck of {size} events is larger than the sample of {total}")
+    quota = {s["stratum"]: size * int(s["drawn"]) / total for s in strata}
+    alloc = {k: int(q) for k, q in quota.items()}
+    left = size - sum(alloc.values())
+    for k in sorted(quota, key=lambda k: (-(quota[k] - alloc[k]), k))[:left]:
+        alloc[k] += 1
+    return alloc
+
+
+def draw_recheck(
+    events: Sequence[dict[str, Any]], alloc: dict[str, int], seed: int
+) -> list[dict[str, Any]]:
+    """The recheck events: a seeded draw within each stratum, then a new random order."""
+    import random
+
+    rng = random.Random(seed)
+    chosen: list[dict[str, Any]] = []
+    for stratum in sorted(alloc):
+        members = sorted(
+            (e for e in events if e["stratum"] == stratum), key=lambda e: e["event_id"]
+        )
+        if len(members) < alloc[stratum]:
+            raise ValueError(f"stratum {stratum} has {len(members)} events, {alloc[stratum]} asked")
+        chosen += rng.sample(members, alloc[stratum])
+    rng.shuffle(chosen)
+    return chosen
