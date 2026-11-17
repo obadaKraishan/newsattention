@@ -239,3 +239,87 @@ def test_daily_plans_the_old_titles_of_a_new_item_that_moved(make_client, tmp_pa
     plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
     old = [(p["title"], p["span_start"], p["span_end"]) for p in plan if p["kind"] == "old_title"]
     assert old == [("Newland (old)", "2025-01-01", "2025-02-10")]
+
+
+def _follow_ups(store):
+    plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
+    return [
+        (p["qid"], p["project"], p["span_start"], p["span_end"]) for p in plan if p.get("follow_up")
+    ]
+
+
+def test_daily_follows_up_english_on_day_1(make_client, tmp_path):
+    # An event of March 18 links Q1, whose English series stops on March 12. The run of March 20
+    # fetches its day-0 and day-1 views at once; they do not wait for the 7-day follow-up.
+    store = _store_with_q1(tmp_path, [date(2025, 3, 18)], date(2025, 3, 12))
+    client, _ = make_client(handler)
+    daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lambda m: None)
+    assert _follow_ups(store) == [("Q1", "en.wikipedia", "2025-03-11", "2025-03-19")]
+
+
+def test_daily_follows_up_other_languages_once_at_28_days(make_client, tmp_path):
+    # Q1's events are on February 20 (day 27 is March 19) and March 18. Its English series is
+    # current; its German one stops on March 5, so the run of March 20 closes the German gap
+    # from the February event on. The March event's German days wait for its own day 27.
+    store = _store_with_q1(tmp_path, [date(2025, 2, 20), date(2025, 3, 18)], DAY)
+    german = {"qid": "Q1", "project": "de.wikipedia", "title": "Fakeland (de)", "page_id": 7}
+    german |= {"rank": 1, "kind": "current"}
+    backfill.append_jsonl(store.root / "api" / "plan.jsonl", [german])
+    status = {"plan_index": 1, "status": "ok", "days": 1, "first": "2025-01-01"}
+    backfill.append_jsonl(store.root / "api" / "status.jsonl", [status | {"last": "2025-03-05"}])
+    backfill.write_json(store.root / "api" / "progress.json", {"next": 2})
+    client, _ = make_client(handler)
+    daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lambda m: None)
+    plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
+    (de,) = [p for p in plan if p.get("follow_up")]
+    assert (de["project"], de["title"], de["page_id"], de["rank"]) == (
+        "de.wikipedia",
+        "Fakeland (de)",
+        7,
+        1,
+    )
+    assert (de["span_start"], de["span_end"]) == ("2025-02-20", "2025-03-19")
+
+
+def test_follow_ups_due_for_other_languages_at_day_27():
+    by_day = {date(2025, 2, 1): {"Q1"}, date(2025, 3, 1): {"Q2"}}
+    covered = {
+        ("Q1", "de.wikipedia"): (date(2025, 1, 1), date(2025, 2, 10)),
+        ("Q1", "fr.wikipedia"): (date(2025, 1, 1), date(2025, 2, 28)),  # reaches day 27
+        ("Q2", "de.wikipedia"): (date(2025, 1, 1), date(2025, 3, 2)),  # day 27 not come yet
+    }
+    due = daily.other_language_follow_ups(by_day, covered, date(2025, 3, 10))
+    assert due == {("Q1", "de.wikipedia"): date(2025, 2, 1)}
+
+
+def test_daily_calls_english_by_title_for_an_article_with_no_item(make_client, tmp_path):
+    # Newland, linked on March 19, is an article with no Wikidata item: it gets an English call
+    # by title over the whole span, under its page id, and is not planned again the next time.
+    def no_item(method, url, params, headers):
+        if url == "https://en.wikipedia.org/w/api.php" and params.get("prop") == "pageprops":
+            pages = []
+            for t in params["titles"].split("|"):
+                page = {"title": t, "pageid": IDS[t][0]}
+                if t != "Newland":
+                    page["pageprops"] = {"wikibase_item": IDS[t][1]}
+                pages.append(page)
+            return FakeResponse(200, {"query": {"pages": pages}})
+        return handler(method, url, params, headers)
+
+    store = _store_with_q1(tmp_path, [OLD_DAY], OLD_DAY)
+    client, _ = make_client(no_item)
+    out = daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lambda m: None)
+    plan = backfill.read_jsonl(store.root / "api" / "plan.jsonl")
+    itemless = [
+        (p["qid"], p["project"], p["title"], p["page_id"], p["span_start"], p["span_end"])
+        for p in plan
+        if p.get("qid") is None
+    ]
+    assert itemless == [(None, "en.wikipedia", "Newland", 200, "2025-01-01", "2025-03-19")]
+    assert out["links"]["no_item"] == 1
+    covered = backfill.coverage(
+        plan, backfill.read_jsonl(store.root / "api" / "status.jsonl"), None, date(2025, 1, 1)
+    )
+    assert covered[("page:200", "en.wikipedia")] == (date(2025, 1, 1), DAY)
+    again = daily.run_daily(client, store, TODAY, date(2025, 1, 1), say=lambda m: None)
+    assert again["api"]["planned"] == 0

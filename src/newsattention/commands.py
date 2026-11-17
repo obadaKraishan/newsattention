@@ -651,6 +651,7 @@ def cmd_tables(args: argparse.Namespace) -> int:
     covered = backfill.coverage(plan, statuses, backfill.full_span_end(store), SPAN_START)
     bank = tables.SeriesBank(SPAN_START, args.end)
     bank.load(sorted((store.raw / "api").glob("chunk-*.parquet")), plan, covered)
+    summary["page_series_dropped"] = bank.keep_pages(set(backfill.linked_without_item(store)))
     summary.update(tables.write_views_api(bank, out))
     summary.update(tables.write_series(bank, out, args.end))
     summary.update(tables.build_attention(store, out, bank, args.end))

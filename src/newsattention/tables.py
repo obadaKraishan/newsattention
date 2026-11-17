@@ -212,7 +212,10 @@ def build_views_dp(store: Store, out: Path, say: Say = print) -> dict[str, int]:
 
 
 class SeriesBank:
-    """Daily views per (qid, project) over the span, as arrays (missing days are zero).
+    """Daily views per (series, project) over the span, as arrays (missing days are zero).
+
+    A series is an item's qid, or ``page:<id>`` for an English article with no Wikidata item
+    (:func:`backfill.series_id`); the tables write the latter with an empty qid and its page id.
 
     English series of moved pages are joined across titles: each day takes the views of the
     title the page had that day, and the day of a move adds both titles.
@@ -257,7 +260,7 @@ class SeriesBank:
             views = table["views"].to_numpy()
             for j in np.unique(idx):
                 item = plan[int(j)]
-                key = (item["qid"], item["project"])
+                key = (backfill.series_id(item["qid"], item.get("page_id")), item["project"])
                 sel = idx == j
                 arr = np.zeros(self.n, dtype=np.int64)
                 arr[days[sel]] = views[sel]
@@ -295,6 +298,22 @@ class SeriesBank:
                 self.series[key] = self.series[key] + red
                 self.joined.add(key)
 
+    def keep_pages(self, page_ids: set[int]) -> int:
+        """Drop the page-id series of articles that now have an item (or are no longer linked).
+
+        Their views are under the item's qid from then on; returns how many were dropped.
+        """
+        drop = [
+            key
+            for key in self.series
+            if key[0].startswith(backfill.PAGE_SERIES)
+            and backfill.split_series_id(key[0])[1] not in page_ids
+        ]
+        for key in drop:
+            del self.series[key]
+            self.joined.discard(key)
+        return len(drop)
+
     def as_dict(self, key: tuple[str, str], last: date) -> dict[date, int]:
         arr = self.series[key]
         upto = self.index(last)
@@ -319,15 +338,16 @@ def write_views_api(bank: SeriesBank, out: Path, say: Say = print) -> dict[str, 
             nz = np.flatnonzero(arr)
             if not len(nz):
                 continue
+            qid, page_id = backfill.split_series_id(key[0])
             cols["date"].extend(bank.start + timedelta(days=int(lo + i)) for i in nz)
-            cols["qid"].extend([key[0]] * len(nz))
+            cols["qid"].extend([qid] * len(nz))
             cols["project"].extend([key[1]] * len(nz))
             cols["country"].extend([""] * len(nz))
             cols["views"].extend(int(v) for v in arr[nz])
             cols["source"].extend(["api"] * len(nz))
             cols["noisy"].extend([False] * len(nz))
             cols["joined"].extend([key in bank.joined] * len(nz))
-            cols["page_id"].extend([None] * len(nz))
+            cols["page_id"].extend([page_id] * len(nz))
         pq.write_table(
             pa.table(cols, schema=VIEWS_SCHEMA), folder / f"{month}.parquet", compression="zstd"
         )
@@ -339,6 +359,7 @@ def write_views_api(bank: SeriesBank, out: Path, say: Say = print) -> dict[str, 
 SERIES_SCHEMA = pa.schema(
     [
         ("qid", pa.string()),
+        ("page_id", pa.int64()),
         ("project", pa.string()),
         ("first_day", pa.date32()),
         ("last_day", pa.date32()),
@@ -352,7 +373,9 @@ def write_series(bank: SeriesBank, out: Path, last_day: date) -> dict[str, int]:
     cols: dict[str, list[Any]] = {n: [] for n in SERIES_SCHEMA.names}
     for key in sorted(bank.series):
         first, last = bank.covered.get(key, (bank.start, last_day))
-        cols["qid"].append(key[0])
+        qid, page_id = backfill.split_series_id(key[0])
+        cols["qid"].append(qid)
+        cols["page_id"].append(page_id)
         cols["project"].append(key[1])
         cols["first_day"].append(first)
         cols["last_day"].append(min(last, last_day))
@@ -363,14 +386,22 @@ def write_series(bank: SeriesBank, out: Path, last_day: date) -> dict[str, int]:
 
 
 def event_links(out: Path) -> list[tuple[str, date, str]]:
-    """(event_id, event date, qid) for every event page with a qid."""
+    """(event_id, event date, series) for every event page that exists.
+
+    The series is the page's qid, or ``page:<id>`` for an article with no Wikidata item.
+    """
     table = ds.dataset(str(out / "event_pages"), format="parquet").to_table(
-        columns=["event_id", "qid"]
+        columns=["event_id", "qid", "page_id"]
     )
     rows = []
-    for eid, qid in zip(table["event_id"].to_pylist(), table["qid"].to_pylist(), strict=True):
-        if qid:
-            rows.append((eid, date.fromisoformat(eid[:10]), qid))
+    for eid, qid, pid in zip(
+        table["event_id"].to_pylist(),
+        table["qid"].to_pylist(),
+        table["page_id"].to_pylist(),
+        strict=True,
+    ):
+        if qid or pid:
+            rows.append((eid, date.fromisoformat(eid[:10]), backfill.series_id(qid, pid)))
     return rows
 
 
@@ -421,6 +452,7 @@ ATTENTION_SCHEMA = pa.schema(
         ("event_id", pa.string()),
         ("event_date", pa.date32()),
         ("qid", pa.string()),
+        ("page_id", pa.int64()),
         ("project", pa.string()),
         ("country", pa.string()),
         ("date", pa.date32()),
@@ -437,6 +469,7 @@ SUMMARY_SCHEMA = pa.schema(
         ("event_id", pa.string()),
         ("event_date", pa.date32()),
         ("qid", pa.string()),
+        ("page_id", pa.int64()),
         ("project", pa.string()),
         ("baseline", pa.float64()),
         ("views_day0", pa.int64()),
@@ -596,6 +629,7 @@ def build_attention(
                     ):
                         ctry[name].append(value)
             # languages
+            item, page_id = backfill.split_series_id(qid)
             sums = []
             for project in projects.get(qid, []):
                 arr = bank.series[(qid, project)]
@@ -606,7 +640,8 @@ def build_attention(
                     v = int(arr[e + k])
                     att["event_id"].append(eid)
                     att["event_date"].append(d)
-                    att["qid"].append(qid)
+                    att["qid"].append(item)
+                    att["page_id"].append(page_id)
                     att["project"].append(project)
                     att["country"].append("")
                     att["date"].append(d + timedelta(days=k))
@@ -620,7 +655,8 @@ def build_attention(
                 row = {
                     "event_id": eid,
                     "event_date": d,
-                    "qid": qid,
+                    "qid": item,
+                    "page_id": page_id,
                     "project": project,
                     **{
                         k: getattr(sm, k)
@@ -701,10 +737,14 @@ def compute_roles(
         .to_pylist()
     }
     summaries = {}
-    summ = ds.dataset(str(out / "attention_summary"), format="parquet").to_table(
+    dataset = ds.dataset(str(out / "attention_summary"), format="parquet")
+    # Tables built before articles with no item had views have no page_id column.
+    with_pages = "page_id" in dataset.schema.names
+    summ = dataset.to_table(
         columns=[
             "event_id",
             "qid",
+            *(["page_id"] if with_pages else []),
             "project",
             "baseline",
             "lift_day0",
@@ -715,7 +755,7 @@ def compute_roles(
     )
     for r in summ.to_pylist():
         if r["project"] == EN:
-            summaries[(r["event_id"], r["qid"])] = r
+            summaries[(r["event_id"], backfill.series_id(r["qid"], r.get("page_id")))] = r
     facts = page_facts(store, out, use_classes)
     all_roles: dict[str, list[tuple[str, str]]] = {}
     files: dict[Path, list[dict[str, Any]]] = {}
@@ -734,7 +774,9 @@ def compute_roles(
                     ev["text"],
                     link,
                     facts.get(link["page_id"]) if link["page_id"] else None,
-                    summaries.get((eid, link["qid"])),
+                    summaries.get((eid, backfill.series_id(link["qid"], link["page_id"])))
+                    if link["qid"] or link["page_id"]
+                    else None,
                 )
                 for link in links
             ]

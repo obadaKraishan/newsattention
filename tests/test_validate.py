@@ -152,12 +152,19 @@ def test_parquet_files_checked_by_folder_name(tmp_path, capsys):
     assert any(e.startswith("row 2, views") for e in errors)
     pq.write_table(pa.table({"date": rows["date"]}), folder / "2025-03.parquet")
     assert "columns differ" in validate_file(folder / "2025-03.parquet").errors[0]
-    nulls = dict(rows, qid=["Q1", None, "Q1"])
+    nulls = dict(rows, project=["en.wikipedia", None, "en.wikipedia"])
     pq.write_table(pa.table(nulls), folder / "2025-04.parquet")
     assert any(
         "empty values in a required field" in e
         for e in validate_file(folder / "2025-04.parquet").errors
     )
+    # An empty qid is only for an English article with no Wikidata item, named by its page id.
+    no_qid = dict(rows, qid=["Q1", None, "Q1"])
+    pq.write_table(pa.table(no_qid), folder / "2025-06.parquet")
+    assert any("give its page_id" in e for e in validate_file(folder / "2025-06.parquet").errors)
+    page = dict(rows, qid=[None] * 3, page_id=[200] * 3)
+    pq.write_table(pa.table(page), folder / "2025-07.parquet")
+    assert validate_file(folder / "2025-07.parquet").ok
     empty = pa.table(rows).slice(0, 0)
     pq.write_table(empty, folder / "2025-05.parquet")
     assert validate_file(folder / "2025-05.parquet").errors == ["2025-05.parquet has no rows."]

@@ -228,11 +228,34 @@ class EventPage(_Frozen):
         return self
 
 
+def no_item_rules(page_id: int | None, project: str) -> None:
+    """A row with an empty qid is an English article with no Wikidata item: it needs a page id."""
+    if page_id is None:
+        raise ValueError(
+            "qid is empty, so this must be an English article with no Wikidata item: give its "
+            "page_id."
+        )
+    if project != "en.wikipedia":
+        raise ValueError("Only English articles are fetched without a Wikidata item.")
+
+
+def item_or_page(qid: str | None, page_id: int | None, project: str) -> None:
+    """Derived rows name an item (qid) or, for an article with no item, its page id; not both."""
+    if qid is None:
+        no_item_rules(page_id, project)
+    else:
+        check_qid(qid)
+        if page_id is not None:
+            raise ValueError("page_id is only given for an article with no Wikidata item.")
+
+
 class Views(_Frozen):
     """Daily views of one article: all countries (``api``) or one country (``dp``)."""
 
     date: date
-    qid: str
+    qid: str | None = Field(
+        description="Wikidata id; empty only for an English article with no item (api rows)"
+    )
     project: str
     country: str = Field(default="", description="Two-letter code; empty for all countries")
     views: int = Field(ge=0)
@@ -245,13 +268,16 @@ class Views(_Frozen):
     page_id: int | None = Field(
         default=None,
         gt=0,
-        description="The page id of the published row (dp); one item can have two pages",
+        description=(
+            "The page id of the published row (dp; one item can have two pages), or of an "
+            "English article with no Wikidata item (api)"
+        ),
     )
 
     @field_validator("qid")
     @classmethod
-    def _qid(cls, value: str) -> str:
-        return check_qid(value)
+    def _qid(cls, value: str | None) -> str | None:
+        return None if value is None else check_qid(value)
 
     @field_validator("project")
     @classmethod
@@ -260,6 +286,10 @@ class Views(_Frozen):
 
     @model_validator(mode="after")
     def _source_rules(self) -> Views:
+        if self.qid is None:
+            no_item_rules(self.page_id, self.project)
+            if self.source != "api":
+                raise ValueError("Rows of the country files always have a qid.")
         if self.source == "dp":
             if not COUNTRY_RE.match(self.country):
                 raise ValueError(
@@ -287,7 +317,10 @@ class Attention(_Frozen):
 
     event_id: str
     event_date: date
-    qid: str
+    qid: str | None = Field(description="Wikidata id; empty for an article with no item")
+    page_id: int | None = Field(
+        default=None, gt=0, description="English page id of an article with no Wikidata item"
+    )
     project: str
     country: str = ""
     date: date
@@ -304,11 +337,6 @@ class Attention(_Frozen):
     def _event_id(cls, value: str) -> str:
         return check_event_id(value)
 
-    @field_validator("qid")
-    @classmethod
-    def _qid(cls, value: str) -> str:
-        return check_qid(value)
-
     @field_validator("project")
     @classmethod
     def _project(cls, value: str) -> str:
@@ -316,6 +344,7 @@ class Attention(_Frozen):
 
     @model_validator(mode="after")
     def _consistent(self) -> Attention:
+        item_or_page(self.qid, self.page_id, self.project)
         if (self.date - self.event_date).days != self.days_since_event:
             raise ValueError(
                 f"days_since_event is {self.days_since_event}, but {self.date} is "
@@ -346,7 +375,10 @@ class AttentionSummary(_Frozen):
 
     event_id: str
     event_date: date
-    qid: str
+    qid: str | None = Field(description="Wikidata id; empty for an article with no item")
+    page_id: int | None = Field(
+        default=None, gt=0, description="English page id of an article with no Wikidata item"
+    )
     project: str
     baseline: float | None = Field(ge=0)
     views_day0: int | None = Field(ge=0)
@@ -368,11 +400,6 @@ class AttentionSummary(_Frozen):
     def _event_id(cls, value: str) -> str:
         return check_event_id(value)
 
-    @field_validator("qid")
-    @classmethod
-    def _qid(cls, value: str) -> str:
-        return check_qid(value)
-
     @field_validator("project")
     @classmethod
     def _project(cls, value: str) -> str:
@@ -380,6 +407,7 @@ class AttentionSummary(_Frozen):
 
     @model_validator(mode="after")
     def _rules(self) -> AttentionSummary:
+        item_or_page(self.qid, self.page_id, self.project)
         if self.event_id[:10] != self.event_date.isoformat():
             raise ValueError("event_date does not match the date in event_id.")
         low = self.baseline is None or self.baseline < LIFT_FLOOR
@@ -475,7 +503,10 @@ class Series(_Frozen):
     outside it the views were not fetched (yet).
     """
 
-    qid: str
+    qid: str | None = Field(description="Wikidata id; empty for an article with no item")
+    page_id: int | None = Field(
+        default=None, gt=0, description="English page id of an article with no Wikidata item"
+    )
     project: str
     first_day: date
     last_day: date
@@ -483,7 +514,7 @@ class Series(_Frozen):
 
     @model_validator(mode="after")
     def _span(self) -> Series:
-        check_qid(self.qid)
+        item_or_page(self.qid, self.page_id, self.project)
         if self.last_day < self.first_day:
             raise ValueError(f"last_day {self.last_day} is before first_day {self.first_day}.")
         return self
@@ -505,11 +536,11 @@ KEYS: dict[str, tuple[str, ...]] = {
     "events": ("event_id",),
     "event_pages": ("event_id", "link_order"),
     "views": ("date", "qid", "project", "page_id", "country", "source"),
-    "attention": ("event_id", "qid", "project", "country", "date", "source"),
-    "attention_summary": ("event_id", "qid", "project"),
+    "attention": ("event_id", "qid", "page_id", "project", "country", "date", "source"),
+    "attention_summary": ("event_id", "qid", "page_id", "project"),
     "country_status": ("event_id", "qid", "project", "country"),
     "pages": ("page_id",),
-    "series": ("qid", "project"),
+    "series": ("qid", "page_id", "project"),
 }
 
 #: List fields, written with "|" between items in CSV files.

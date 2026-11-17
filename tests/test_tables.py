@@ -344,3 +344,69 @@ def test_review_sheets_command_writes_blind_sheets_and_a_separate_key(tmp_path, 
     assert entry["sheet"] == "sheet-1.xlsx" and entry["Q1"] in ("none", 1, 2)
     check = review.check_sheet(sheets / "sheet-1.xlsx")
     assert check.events == 1 and check.answers[0]["event_id"] == entry["event_id"]
+
+
+def test_an_article_with_no_item_has_views_under_its_page_id(tmp_path):
+    # "Made-up Cup" (page 200) has no Wikidata item: its English views are fetched by title and
+    # appear in every table under its page id, with an empty qid.
+    store = make_store(tmp_path)
+    rows = backfill.read_jsonl(store.resolved)
+    store.resolved.write_text(
+        "".join(json.dumps({**r, "qid": None if r["page_id"] == 200 else r["qid"]}) + "\n" for r in rows)
+    )  # fmt: skip
+    out = tmp_path / "tables"
+    tables.build_events(store, out)
+    tables.build_pages(store, out, START, LAST)
+    tables.build_views_dp(store, out, say=lambda m: None)
+    plan = [
+        {"qid": "Q1", "project": "en.wikipedia", "title": "Fakeland", "page_id": 100},
+        {"qid": None, "project": "en.wikipedia", "title": "Made-up Cup", "page_id": 200},
+    ]
+    plan = [p | {"rank": 0, "kind": "current"} for p in plan]
+    days = [START + timedelta(days=k) for k in range((LAST - START).days + 1)]
+    chunk = {
+        "plan_index": [0] * len(days) + [1] * len(days),
+        "qid": ["Q1"] * len(days) + [None] * len(days),
+        "project": ["en.wikipedia"] * (2 * len(days)),
+        "title": ["Fakeland"] * len(days) + ["Made-up Cup"] * len(days),
+        "kind": ["current"] * (2 * len(days)),
+        "date": days + days,
+        "views": [50] * len(days) + [900 if d == EVENT_DAY else 30 for d in days],
+    }
+    path = tmp_path / "chunk-0000000.parquet"
+    pq.write_table(pa.table(chunk, schema=backfill.API_SCHEMA), path)
+    bank = tables.SeriesBank(START, LAST)
+    bank.load([path], plan)
+    assert set(bank.series) == {("Q1", "en.wikipedia"), ("page:200", "en.wikipedia")}
+    tables.write_views_api(bank, out, say=lambda m: None)
+    tables.write_series(bank, out, LAST)
+    tables.build_attention(store, out, bank, LAST, say=lambda m: None)
+    views = pq.read_table(out / "views_api" / "2025-02.parquet").to_pylist()
+    assert {(r["qid"], r["page_id"]) for r in views} == {("Q1", None), (None, 200)}
+    series = pq.read_table(out / "series.parquet").to_pylist()
+    assert {(r["qid"], r["page_id"]) for r in series} == {("Q1", None), (None, 200)}
+    summary = pq.read_table(out / "attention_summary" / "2025-02.parquet").to_pylist()
+    cup = next(r for r in summary if r["page_id"] == 200)
+    assert cup["qid"] is None and cup["lift_day0"] == 30.0
+    attention = pq.read_table(out / "attention" / "2025-02.parquet").to_pylist()
+    assert {r["page_id"] for r in attention} == {None, 200}
+    tables.build_roles(store, out, say=lambda m: None)
+    for p in sorted(out.rglob("*.parquet")):
+        report = validate_file(p)
+        assert report.ok, (p, report.errors)
+
+
+def test_roles_read_tables_built_before_page_ids(tmp_path):
+    # Summaries written before articles with no item had views have no page_id column.
+    store = make_store(tmp_path)
+    out = tmp_path / "tables"
+    tables.build_events(store, out)
+    tables.build_pages(store, out, START, LAST)
+    tables.build_views_dp(store, out, say=lambda m: None)
+    bank = tables.SeriesBank(START, LAST)
+    bank.series[("Q1", "en.wikipedia")] = np.full(bank.n, 50, dtype=np.int64)
+    tables.build_attention(store, out, bank, LAST, say=lambda m: None)
+    path = out / "attention_summary" / "2025-02.parquet"
+    pq.write_table(pq.read_table(path).drop(["page_id"]), path)
+    _, all_roles, _ = tables.compute_roles(store, out)
+    assert len(next(iter(all_roles.values()))) == 2

@@ -374,6 +374,37 @@ def collect_links(store: Store) -> list[dict[str, Any]]:
     return out
 
 
+#: Series of an English article with no Wikidata item are named by its page id.
+PAGE_SERIES = "page:"
+
+
+def series_id(qid: str | None, page_id: int | None) -> str:
+    """The name of a series: the Wikidata id, or ``page:<id>`` for an article with no item."""
+    if qid:
+        return qid
+    if not page_id:
+        raise ValueError("a series needs a qid or, for an article with no item, a page id")
+    return f"{PAGE_SERIES}{page_id}"
+
+
+def split_series_id(sid: str) -> tuple[str | None, int | None]:
+    """``(qid, None)`` for an item's series, ``(None, page_id)`` for an article with no item."""
+    if sid.startswith(PAGE_SERIES):
+        return None, int(sid[len(PAGE_SERIES) :])
+    return sid, None
+
+
+def linked_without_item(store: Store) -> dict[int, str]:
+    """Page id -> title of every linked English article that has no Wikidata item."""
+    resolved = load_resolved(store)
+    out: dict[int, str] = {}
+    for link in collect_links(store):
+        res = resolved.get(link["title"])
+        if res and res.page_id and not res.qid:
+            out.setdefault(res.page_id, res.title)
+    return out
+
+
 def load_resolved(store: Store) -> dict[str, wikidata.Resolved]:
     out = {}
     for row in read_jsonl(store.resolved):
@@ -1200,7 +1231,7 @@ def coverage(
     full_end: date | None,
     start: date,
 ) -> dict[tuple[str, str], tuple[date, date]]:
-    """First and last day fetched for each item and language under its current title.
+    """First and last day fetched for each series (:func:`series_id`) under its current title.
 
     A call counts once its status line says ``ok`` or ``no views``: an empty answer means no
     views on those days, not unknown days. Old-title and redirect calls add views to a series
@@ -1228,7 +1259,7 @@ def coverage(
                 )
             first = date.fromisoformat(item.get("span_start") or start.isoformat())
             last = date.fromisoformat(last_s) if last_s else full_end  # type: ignore[assignment]
-        key = (item["qid"], item["project"])
+        key = (series_id(item["qid"], item.get("page_id")), item["project"])
         if key in out:
             a, b = out[key]
             first, last = min(a, first), max(b, last)
