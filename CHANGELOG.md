@@ -25,6 +25,8 @@ All notable changes to this project are documented here. The format follows
   forms (a correction and a removal request, answered within 14 days), with
   `docs/corrections.md` saying what happens to each.
 - `.zenodo.json` for a Zenodo record of the code and documents only.
+- `validate` accepts a released `event_pages` file that lacks both role columns (the release
+  leaves them out); a file with one of them and not the other still fails.
 - `review-key`: the rule's answers for the sampled events from the current code, with the
   Wikidata classes or without them (`--without-classes`), recording the rule's version and the
   SHA-256 of `roles.py`; it refuses when the tables show an event's links otherwise than its
@@ -58,6 +60,7 @@ All notable changes to this project are documented here. The format follows
   (CC0 1.0 for every table but `events`, CC BY-SA 4.0 for the event text) are decided.
 - CI runs the full Python matrix (3.10 to 3.13) when the workflow is started by hand; pushes
   and pull requests still run 3.12 only.
+- The data card describes release 0.1.0 as built on 2026-11-23 (events through 2026-11-22).
 - `series`, `attention` and `attention_summary` gain a `page_id` column, and `qid` may be empty
   in `views_api`, `series`, `attention` and `attention_summary`: such a row is an English
   article with no Wikidata item, named by its page id. A page-id series is left out once the
