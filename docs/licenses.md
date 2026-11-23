@@ -31,13 +31,19 @@ NewsAttention therefore:
 - never edits the wording of an event; corrections happen on the portal and arrive with the
   next re-read.
 
-## Proposed license of the release (for the maintainer's decision)
-| Table | Proposed license | Why |
+## License of the release (decided 2026-11-23)
+| Table | License | Why |
 |---|---|---|
-| `views` (exact language counts and noisy country counts) | CC0 1.0 | Both sources are CC0; NewsAttention adds nothing creative |
-| `attention` (baseline, lift, peak, half-life, breadth) | CC0 1.0 | Computed from CC0 counts; keyed by NewsAttention's own event ids and Wikidata ids |
-| `event_pages` (which articles each event links to) | **CC0 1.0** (recommended), or CC BY-SA 4.0 with the events | The links are facts taken from the portal. A database built from a substantial part of a CC BY-SA 4.0 database can count as an adaptation where database rights exist (section 4(b) of the license), but Wikipedia's contributors waive those rights: "Where you own Sui Generis Database Rights covered by CC BY-SA 4.0, you waive these rights. As an example, this means facts you contribute to the projects may be reused freely without attribution." ([Terms of Use](https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use), section 7a). Credit is given anyway |
-| `events` (event text, category, story headings, cited domains) | CC BY-SA 4.0, credited to Wikipedia's editors with the page name and revision id | The text is the editors' work under CC BY-SA 4.0 |
+| `events` (event text, category, story headings, cited domains) | **CC BY-SA 4.0**, credited to Wikipedia's contributors with the page name and revision id | The text is the editors' work under CC BY-SA 4.0 |
+| `event_pages` (which articles each event links to) | CC0 1.0 | The links are facts taken from the portal. A database built from a substantial part of a CC BY-SA 4.0 database can count as an adaptation where database rights exist (section 4(b) of the license), but Wikipedia's contributors waive those rights: "Where you own Sui Generis Database Rights covered by CC BY-SA 4.0, you waive these rights. As an example, this means facts you contribute to the projects may be reused freely without attribution." ([Terms of Use](https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use), section 7a). Credit is given anyway |
+| `pages`, `series` (article facts, fetched days) | CC0 1.0 | From the MediaWiki API's page facts and move log; facts, with nothing creative added |
+| `views_api`, `views_dp` (exact language counts and noisy country counts) | CC0 1.0 | Both sources are CC0; NewsAttention adds nothing creative |
+| `attention`, `attention_summary`, `country_status` (the measures) | CC0 1.0 | Computed from CC0 counts; keyed by NewsAttention's own event ids and Wikidata ids |
+
+Every release carries a `LICENSES.md` that gives the license of each table and column, and each
+Parquet file names its license in its own metadata. The code keeps the Apache License 2.0.
+Kaggle takes one license per dataset: the Kaggle mirror shows CC BY-SA 4.0, the one license
+that is true of every file, and its `LICENSES.md` gives each table's own license.
 
 **What share-alike means for people who merge the tables.**
 - Using the CC0 tables alone (counts and measures) carries no conditions; credit is welcome.
