@@ -5,8 +5,9 @@ about them on Wikipedia, by country and by language. It is built for communicati
 journalism researchers who need open, comparable data on public attention: how long attention
 to an event lasts, where it travels, and which events never get any.
 
-**Status: early development.** Nothing has been released yet. The method is a draft
-([docs/method.md](docs/method.md)).
+**Status: the first release (0.1.0) is being prepared.** Nothing has been published yet.
+The dataset will be on Hugging Face (`obadakr/newsattention`), with a Kaggle mirror; see the
+[release layout](docs/release-layout.md).
 
 ## What it measures
 - **Events:** the dated news events that Wikipedia's volunteer editors list on the English
@@ -40,13 +41,20 @@ uv run pytest
 ```
 
 ## Documentation
-- [Method (draft)](docs/method.md)
+- [Method](docs/method.md)
 - [Data sources](docs/sources.md)
 - [Licenses](docs/licenses.md)
+- [Release layout](docs/release-layout.md)
+- [Data card](docs/data-card.md)
+- [Corrections and removals](docs/corrections.md)
 - [Prior art](docs/prior-art.md)
 - [Automation (design)](docs/automation.md)
-- [Data card (skeleton)](docs/data-card.md)
 - [Ethics](docs/ethics.md)
+
+## Corrections and removals
+Use the repository's issue forms: one for a correction (a wrong link, count, measure or country
+status) and one for a removal request. Each request is answered within 14 days; see
+[docs/corrections.md](docs/corrections.md).
 
 ## Credit
 The events come from Wikipedia's Current Events Portal, written by Wikipedia's volunteer
@@ -55,5 +63,6 @@ a trademark of the Wikimedia Foundation; NewsAttention is an independent project
 endorsed by or affiliated with the Wikimedia Foundation.
 
 ## License
-The software is licensed under the Apache License 2.0 (see [LICENSE](LICENSE)). The data
-licenses are described in [docs/licenses.md](docs/licenses.md).
+The software is licensed under the Apache License 2.0 (see [LICENSE](LICENSE)). The data:
+the counts, the links and every measure under CC0 1.0, and the event text under CC BY-SA 4.0
+with credit to Wikipedia's contributors; see [docs/licenses.md](docs/licenses.md).

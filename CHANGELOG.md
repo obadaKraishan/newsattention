@@ -7,6 +7,24 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `release build` writes a version's files from the tables into `data/release/VERSION/`: the
+  nine tables (one file per month for the large ones), a `manifest.json` with every file's
+  rows, size and SHA-256, each table's license and the first and last day each source was
+  read, a `LICENSES.md` that gives the license of each table and column, and the dataset card.
+  Each Parquet file names its table, license and version in its metadata; the event files
+  carry the credit line. The role columns (`role`, `role_confidence`) do not ship.
+- `release check` fails on a role column, a file outside the manifest or different from it, a
+  table without its license, event text in a CC0 table, a country row below the smallest
+  published count (a zero or a filled row), a row the removal list names, and a raw HTML tag or
+  the wrong configurations in the card.
+- `release kaggle` writes the Kaggle mirror's folder (one Parquet file per table, the same
+  `LICENSES.md`, a manifest, `dataset-metadata.json` and a cover drawn by code at 560 by 280).
+- `page visibility` and `page headings`: signed-out checks of the dataset's Hugging Face page
+  (no token, no cookie, no netrc login).
+- The removal list `data/removals.csv` (empty), which every release build reads, and two issue
+  forms (a correction and a removal request, answered within 14 days), with
+  `docs/corrections.md` saying what happens to each.
+- `.zenodo.json` for a Zenodo record of the code and documents only.
 - `review-key`: the rule's answers for the sampled events from the current code, with the
   Wikidata classes or without them (`--without-classes`), recording the rule's version and the
   SHA-256 of `roles.py`; it refuses when the tables show an event's links otherwise than its
@@ -33,6 +51,13 @@ All notable changes to this project are documented here. The format follows
   measured limits; the automation page gives what a daily run costs.
 
 ### Changed
+- The roles are left out of the first release: rule version 1 scored below its target, and
+  below answering "none" every time on the event's own article. The method records the
+  comparison with precision and recall; the three hand-checked sheets are now a development set.
+- The release layout (one configuration per table, one split, monthly files) and the licenses
+  (CC0 1.0 for every table but `events`, CC BY-SA 4.0 for the event text) are decided.
+- CI runs the full Python matrix (3.10 to 3.13) when the workflow is started by hand; pushes
+  and pull requests still run 3.12 only.
 - `series`, `attention` and `attention_summary` gain a `page_id` column, and `qid` may be empty
   in `views_api`, `series`, `attention` and `attention_summary`: such a row is an English
   article with no Wikidata item, named by its page id. A page-id series is left out once the
