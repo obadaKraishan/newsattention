@@ -50,6 +50,7 @@ LICENSE_NAMES = {
     CC0: "CC0 1.0 Universal (public domain dedication)",
     CC_BY_SA: "Creative Commons Attribution-ShareAlike 4.0 International",
 }
+LICENSE_SHORT = {CC0: "CC0 1.0", CC_BY_SA: "CC BY-SA 4.0"}
 LICENSE_URLS = {
     CC0: "https://creativecommons.org/publicdomain/zero/1.0/",
     CC_BY_SA: "https://creativecommons.org/licenses/by-sa/4.0/",
@@ -579,7 +580,7 @@ def tables_markdown(manifest: Mapping[str, Any]) -> str:
         t = manifest["tables"][spec.name]
         rows.append(
             f"| `{spec.name}` | {spec.row} | {t['rows']:,} | {t['files']} | {_mb(t['bytes'])} "
-            f"| {LICENSE_NAMES[spec.license].split(' (')[0]} |"
+            f"| {LICENSE_SHORT[spec.license]} |"
         )
     rows.append(
         f"| **all** | | **{manifest['rows']:,}** | **{len(manifest['files'])}** | "
@@ -861,7 +862,7 @@ def kaggle_files_markdown(files: list[dict[str, Any]]) -> str:
         spec = SPECS[f["table"]]
         rows.append(
             f"| `{f['path']}` | {spec.row} | {f['rows']:,} | {_mb(f['bytes'])} "
-            f"| {LICENSE_NAMES[spec.license].split(' (')[0]} |"
+            f"| {LICENSE_SHORT[spec.license]} |"
         )
     return "\n".join(rows)
 
