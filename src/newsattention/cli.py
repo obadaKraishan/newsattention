@@ -199,9 +199,10 @@ def build_parser() -> argparse.ArgumentParser:
     siz.add_argument("--out", type=Path)
     siz.set_defaults(func=cmd_sizes)
 
-    from newsattention import commands
+    from newsattention import commands, release
 
     commands.register(sub)
+    release.register(sub)
     return parser
 
 
