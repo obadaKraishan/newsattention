@@ -3,7 +3,8 @@
 The card that ships with each version (`README.md` on Hugging Face) is built by
 `newsattention release build` from [`src/newsattention/dataset_card.md`](../src/newsattention/dataset_card.md),
 with that version's numbers. This page keeps the same facts for the repository, with the build
-behind the first release. **Nothing has been published yet.**
+behind the first release. **Nothing is public yet:** release 0.1.0 was uploaded to Hugging
+Face as a private dataset on 2026-11-23 for the maintainer's review.
 
 ## Summary
 NewsAttention links each day's news events, as listed on English Wikipedia's Current Events
@@ -123,7 +124,16 @@ answers kept as Parquet, 0.14 GB of move log and 10 MB of portal pages.
 See [ethics](ethics.md).
 
 ## Citation
-See `CITATION.cff` (filled in at release) and the card's "How to cite".
+The data set's citation is defined once, in `newsattention.citation`; the card's and the Kaggle
+description's "How to cite" open with it, and `release check` fails when either does not:
+
+Kraishan, O. (2026). *NewsAttention: Daily news events linked to how many people read about
+them on Wikipedia* (Version 0.1.0) [Data set]. Hugging Face.
+https://huggingface.co/datasets/obadakr/newsattention
+
+A BibTeX entry and the credit to Wikipedia's contributors follow it. The DOI of the code and
+documents (Zenodo) is added beside it at the public release. `CITATION.cff` describes the
+software.
 
 ## Contact
 The repository's issue forms, for a correction or a removal request; each is answered within

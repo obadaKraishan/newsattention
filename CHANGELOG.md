@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `newsattention.citation`: the data set's citation, defined once (APA 7 for a data set, with
+  the version, and the same as a BibTeX entry). The card's and the Kaggle description's "How to
+  cite" open with it, then the BibTeX entry, then the credit to Wikipedia's contributors;
+  `release check` fails when either does not open with it.
+- `release card` writes the card and the Kaggle description again from a pack's manifest,
+  leaving every data file as it is.
 - `release build` writes a version's files from the tables into `data/release/VERSION/`: the
   nine tables (one file per month for the large ones), a `manifest.json` with every file's
   rows, size and SHA-256, each table's license and the first and last day each source was
