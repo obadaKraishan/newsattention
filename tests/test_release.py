@@ -258,7 +258,7 @@ def test_the_pack_passes_its_check_and_leaves_the_roles_out(pack: Path):
     assert meta[b"newsattention.credit"].decode() == release.CREDIT
     card = (pack / "README.md").read_text()
     assert card.startswith("---\nlicense:\n- cc0-1.0\n- cc-by-sa-4.0\n")
-    assert "version = {0.1.0}" in card and "{{" not in card
+    assert "version = {0.1.0}" in card and not release._SLOT.search(card)
     assert "## Roles: left out of this release" in card
     assert hfpage.raw_tags(card) == [] and hfpage.raw_tags((pack / "LICENSES.md").read_text()) == []
 

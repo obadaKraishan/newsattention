@@ -191,23 +191,7 @@ arrive with the next re-read. This version's removal list has {{removal_entries}
 
 ## How to cite
 
-Kraishan, O. (2026). *NewsAttention: daily news events linked to how many people read about
-them on Wikipedia* (version {{version}}) [Data set]. Hugging Face.
-https://huggingface.co/datasets/{{dataset}}. DOI: to be added.
-
-```bibtex
-@misc{kraishan_newsattention_2026,
-  author = {Kraishan, Obada},
-  title = {NewsAttention: daily news events linked to how many people read about them on Wikipedia},
-  year = {2026},
-  version = {{{version}}},
-  howpublished = {Hugging Face},
-  url = {https://huggingface.co/datasets/{{dataset}}},
-  note = {DOI to be added}
-}
-```
-
-Please also credit Wikipedia's contributors when you use the event text.
+{{how_to_cite}}
 
 ## Updates
 

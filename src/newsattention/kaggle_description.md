@@ -52,11 +52,7 @@ license true of every file; `LICENSES.md` gives each table's own license.
 
 ## How to cite
 
-Kraishan, O. (2026). *NewsAttention: daily news events linked to how many people read about
-them on Wikipedia* (version {{version}}) [Data set]. Hugging Face.
-https://huggingface.co/datasets/{{dataset}}. DOI: to be added.
-
-Please also credit Wikipedia's contributors when you use the event text.
+{{how_to_cite}}
 
 ## Corrections and removals
 

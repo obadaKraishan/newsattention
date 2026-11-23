@@ -41,7 +41,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from newsattention import __version__, hfpage, tables
+from newsattention import __version__, citation, hfpage, tables
 from newsattention.schema import DP_MIN_RELEASED, EVENT_ID_RE, QID_RE, RELEASE_LEFT_OUT
 
 CC0 = "CC0-1.0"
@@ -627,6 +627,7 @@ def card_values(manifest: Mapping[str, Any]) -> dict[str, Any]:
         "dataset": DATASET,
         "repo": REPO_URL,
         "removal_entries": manifest["removals"]["entries"],
+        "how_to_cite": citation.how_to_cite(manifest["version"]),
     }
 
 
@@ -643,6 +644,27 @@ def licenses_text(manifest: Mapping[str, Any]) -> str:
         rows.append(f"| `{spec.name}` | {cols} | {LICENSE_NAMES[spec.license]} |")
     values = card_values(manifest) | {"licenses_table": "\n".join(rows)}
     return fill(_template("licenses_pack.md"), values)
+
+
+def rewrite_card(pack_dir: Path | str, kaggle_dir: Path | str | None = None) -> list[str]:
+    """Write the card (and the Kaggle description) again from the pack's manifest.
+
+    Nothing else changes: the data files, the manifest, ``LICENSES.md`` and the Kaggle folder's
+    other files stay as they are. Returns the files written.
+    """
+    pack = Path(pack_dir)
+    manifest = json.loads((pack / "manifest.json").read_text())
+    (pack / "README.md").write_text(card(manifest))
+    written = [str(pack / "README.md")]
+    if kaggle_dir is not None:
+        k = Path(kaggle_dir)
+        meta_path = k / "dataset-metadata.json"
+        meta = json.loads(meta_path.read_text())
+        km = json.loads((k / "manifest.json").read_text())
+        meta["description"] = kaggle_description(manifest, km["files"])
+        meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+        written.append(str(meta_path))
+    return written
 
 
 # --- the check --------------------------------------------------------------------------------
@@ -761,10 +783,17 @@ def check_pack(pack_dir: Path | str, removals: Path | str | None = None) -> list
         if path.exists():
             text = path.read_text(encoding="utf-8")
             problems += hfpage.tag_problems(name, text)
-            if "{{" in text:
+            if _SLOT.search(text):
                 problems.append(f"{name}: a template slot was left unfilled.")
     if (pack / "README.md").exists():
-        problems += card_metadata_problems((pack / "README.md").read_text(encoding="utf-8"))
+        card_text = (pack / "README.md").read_text(encoding="utf-8")
+        problems += card_metadata_problems(card_text)
+        if not citation.opens_with_citation(card_text, manifest.get("version", "")):
+            problems.append(
+                "README.md: the section 'How to cite' does not open with the data set's citation "
+                f"({citation.apa(manifest.get('version', 'VERSION'))}); rebuild the card with "
+                "`newsattention release card`."
+            )
     if (pack / "LICENSES.md").exists():
         lic_text = (pack / "LICENSES.md").read_text(encoding="utf-8")
         for spec in TABLES:
@@ -937,7 +966,7 @@ def build_kaggle(pack_dir: Path | str, out_dir: Path | str) -> dict[str, Any]:
     return kaggle_manifest
 
 
-def kaggle_metadata_problems(meta: Mapping[str, Any]) -> list[str]:
+def kaggle_metadata_problems(meta: Mapping[str, Any], version: str | None = None) -> list[str]:
     out = []
     lo, hi = KAGGLE_TITLE_LIMITS
     if not lo <= len(meta.get("title", "")) <= hi:
@@ -957,6 +986,11 @@ def kaggle_metadata_problems(meta: Mapping[str, Any]) -> list[str]:
     desc = meta.get("description", "")
     if "## How to cite" not in desc:
         out.append("Kaggle description: no 'How to cite' heading.")
+    elif version is not None and not citation.opens_with_citation(desc, version):
+        out.append(
+            "Kaggle description: 'How to cite' does not open with the data set's citation; "
+            "rebuild it with `newsattention release card`."
+        )
     out += hfpage.tag_problems("Kaggle description", desc)
     return out
 
@@ -1003,7 +1037,7 @@ def check_kaggle(kaggle_dir: Path | str, pack_dir: Path | str) -> list[str]:
         out.append("Kaggle folder: not every table is in it.")
     if (k / "LICENSES.md").read_bytes() != (pack / "LICENSES.md").read_bytes():
         out.append("Kaggle folder: LICENSES.md differs from the pack's.")
-    out += kaggle_metadata_problems(json.loads(meta_path.read_text()))
+    out += kaggle_metadata_problems(json.loads(meta_path.read_text()), pm["version"])
     cov = k / KAGGLE_COVER
     if not cov.exists():
         out.append("Kaggle folder: no cover image.")
@@ -1071,6 +1105,17 @@ def cmd_kaggle(args: Any) -> int:
     return 1 if problems else 0
 
 
+def cmd_card(args: Any) -> int:
+    for path in rewrite_card(args.pack, args.kaggle):
+        print(f"written: {path}")
+    problems = check_pack(args.pack, args.removals)
+    if args.kaggle:
+        problems += check_kaggle(args.kaggle, args.pack)
+    for p in problems:
+        print("PROBLEM:", p)
+    return 1 if problems else 0
+
+
 def cmd_page(args: Any) -> int:
     if args.page_command == "visibility":
         try:
@@ -1119,6 +1164,12 @@ def register(sub: Any) -> None:
     k.add_argument("--pack", type=Path, required=True)
     k.add_argument("--out", type=Path, required=True)
     k.set_defaults(func=cmd_kaggle)
+
+    cd = rsub.add_parser("card", help="write the card and the Kaggle description again")
+    cd.add_argument("--pack", type=Path, required=True)
+    cd.add_argument("--kaggle", type=Path)
+    cd.add_argument("--removals", type=Path, default=Path("data/removals.csv"))
+    cd.set_defaults(func=cmd_card)
 
     page = sub.add_parser("page", help="signed-out checks of the Hugging Face page")
     psub = page.add_subparsers(dest="page_command", required=True)
