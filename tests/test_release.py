@@ -497,3 +497,15 @@ def test_the_zenodo_record_is_for_the_code_and_documents_only():
         f"https://huggingface.co/datasets/{release.DATASET}",
         f"https://www.kaggle.com/datasets/{release.KAGGLE_ID}",
     }
+
+
+def test_an_event_that_is_only_a_title_is_not_text_in_a_cc0_table(tmp_path: Path):
+    tdir = make_tables(tmp_path)
+    path = tdir / "events" / "2026-10.parquet"
+    ev = pq.read_table(path)
+    i = ev.schema.get_field_index("text")
+    ev = ev.set_column(i, ev.schema.field(i), pa.array(["Invented storm of 2026", TEXT2]))
+    pq.write_table(ev, path)
+    out = tmp_path / "pack"
+    release.build_pack(tdir, out, "0.1.0")
+    assert release.check_pack(out) == []

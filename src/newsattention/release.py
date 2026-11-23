@@ -158,6 +158,9 @@ FORBIDDEN_COLUMNS = ("role", "role_confidence")
 EVENT_TEXT_COLUMNS = ("text", "category", "story_titles", "source_domains")
 #: The longest title MediaWiki allows is 255 bytes; any longer string in a CC0 table is text.
 MAX_CC0_STRING = 255
+#: An event text is looked for in the CC0 tables when it has at least this many words. A few
+#: events consist of one linked article title, which the CC0 tables hold as a title.
+MIN_TEXT_WORDS = 8
 #: Files of a pack besides the tables.
 PACK_FILES = ("README.md", "LICENSES.md", "manifest.json")
 #: Size categories of the Hub's card metadata, by total rows.
@@ -707,7 +710,7 @@ def check_pack(pack_dir: Path | str, removals: Path | str | None = None) -> list
     for rel, entry in listed.items():
         if entry.get("table") == "events" and (pack / rel).exists() and rel not in differs:
             col = pq.read_table(pack / rel, columns=["text"])["text"]
-            texts.update(t for t in col.to_pylist() if t)
+            texts.update(t for t in col.to_pylist() if t and len(t.split()) >= MIN_TEXT_WORDS)
     text_set = pa.array(sorted(texts), type=pa.string())
     for rel, entry in sorted(listed.items()):
         path = pack / rel
