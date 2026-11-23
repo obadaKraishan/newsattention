@@ -531,6 +531,10 @@ TABLES: dict[str, type[_Frozen]] = {
     "series": Series,
 }
 
+#: Columns a release leaves out (the roles do not ship): a released file may lack all of them
+#: together, and validation then reads their defaults.
+RELEASE_LEFT_OUT: dict[str, tuple[str, ...]] = {"event_pages": ("role", "role_confidence")}
+
 #: The columns that must be unique together in each table.
 KEYS: dict[str, tuple[str, ...]] = {
     "events": ("event_id",),

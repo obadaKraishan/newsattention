@@ -509,3 +509,17 @@ def test_an_event_that_is_only_a_title_is_not_text_in_a_cc0_table(tmp_path: Path
     out = tmp_path / "pack"
     release.build_pack(tdir, out, "0.1.0")
     assert release.check_pack(out) == []
+
+
+def test_released_event_pages_validate_without_the_roles(pack: Path, tmp_path: Path):
+    from newsattention.validate import validate_file
+
+    rel = pack / "event_pages" / "2026-10.parquet"
+    assert validate_file(rel).ok
+    # One role column without the other is not a released file.
+    t = pq.read_table(rel)
+    half = tmp_path / "event_pages" / "2026-10.parquet"
+    half.parent.mkdir()
+    pq.write_table(t.append_column("role", pa.array(["context"] * t.num_rows)), half)
+    report = validate_file(half)
+    assert not report.ok and "missing: role_confidence" in report.errors[0]

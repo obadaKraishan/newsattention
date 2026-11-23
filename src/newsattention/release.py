@@ -42,7 +42,7 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from newsattention import __version__, hfpage, tables
-from newsattention.schema import DP_MIN_RELEASED, EVENT_ID_RE, QID_RE
+from newsattention.schema import DP_MIN_RELEASED, EVENT_ID_RE, QID_RE, RELEASE_LEFT_OUT
 
 CC0 = "CC0-1.0"
 CC_BY_SA = "CC-BY-SA-4.0"
@@ -153,7 +153,7 @@ TABLES: tuple[TableSpec, ...] = (
 )
 SPECS = {t.name: t for t in TABLES}
 #: Columns of the local tables that do not ship, and why.
-LEFT_OUT: dict[str, tuple[str, ...]] = {"event_pages": ("role", "role_confidence")}
+LEFT_OUT: dict[str, tuple[str, ...]] = RELEASE_LEFT_OUT
 FORBIDDEN_COLUMNS = ("role", "role_confidence")
 #: Columns that hold the portal's own words; a CC0 table never has one.
 EVENT_TEXT_COLUMNS = ("text", "category", "story_titles", "source_domains")

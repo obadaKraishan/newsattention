@@ -22,7 +22,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from newsattention.schema import KEYS, LIST_FIELDS, TABLES
+from newsattention.schema import KEYS, LIST_FIELDS, RELEASE_LEFT_OUT, TABLES
 
 #: Columns that are optional numbers or ids: an empty CSV cell means "no value".
 NULLABLE = {"qid", "page_id", "baseline", "lift", "story_level"}
@@ -160,7 +160,10 @@ def _validate_parquet(path: Path, table: str, report: Report, sample: int, seed:
     data = pq.read_table(path)
     report.rows = data.num_rows
     fields = list(model.model_fields)
-    missing = [f for f in fields if f not in data.column_names]
+    left_out = set(RELEASE_LEFT_OUT.get(table, ()))
+    if left_out & set(data.column_names):
+        left_out = set()  # a file has all of them or, released, none
+    missing = [f for f in fields if f not in data.column_names and f not in left_out]
     extra = [c for c in data.column_names if c not in fields]
     if missing or extra:
         report.errors.append(
