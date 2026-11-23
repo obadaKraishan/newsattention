@@ -487,3 +487,13 @@ def test_the_issue_forms_name_their_labels_and_the_answer_time():
     doc = (Path(__file__).parent.parent / "docs" / "corrections.md").read_text()
     assert ",".join(release.REMOVAL_FIELDS) == "kind,id,received,issue,reason"
     assert all(f"`{field}`" in doc for field in release.REMOVAL_FIELDS)
+
+
+def test_the_zenodo_record_is_for_the_code_and_documents_only():
+    meta = json.loads((Path(__file__).parent.parent / ".zenodo.json").read_text())
+    assert meta["upload_type"] == "software" and meta["license"] == "Apache-2.0"
+    assert "code and documents only, no data table" in meta["description"]
+    assert {r["identifier"] for r in meta["related_identifiers"]} == {
+        f"https://huggingface.co/datasets/{release.DATASET}",
+        f"https://www.kaggle.com/datasets/{release.KAGGLE_ID}",
+    }

@@ -1,0 +1,34 @@
+{
+  "title": "NewsAttention: software and documents for a daily dataset of news events and Wikipedia page views",
+  "upload_type": "software",
+  "description": "<p>The software that builds NewsAttention, a daily dataset that links the news events of English Wikipedia's Current Events Portal to how many people read the linked articles, by language edition (Wikimedia Analytics API) and by country (Wikimedia's differentially private page views, used as published), with its documents (method, sources, licenses, data card, corrections and removals). <strong>This archive holds the code and documents only, no data table.</strong> The dataset itself is published on Hugging Face (obadakr/newsattention), with a mirror on Kaggle (obadakraishan/newsattention). NewsAttention is not affiliated with the Wikimedia Foundation.</p>",
+  "creators": [
+    {
+      "name": "Kraishan, Obada",
+      "affiliation": "College of Media and Communication, Texas Tech University",
+      "orcid": "0009-0007-7180-8620"
+    }
+  ],
+  "license": "Apache-2.0",
+  "keywords": [
+    "public attention",
+    "news events",
+    "Wikipedia page views",
+    "communication research",
+    "journalism",
+    "research software"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://huggingface.co/datasets/obadakr/newsattention",
+      "relation": "isSupplementTo",
+      "resource_type": "dataset"
+    },
+    {
+      "identifier": "https://www.kaggle.com/datasets/obadakraishan/newsattention",
+      "relation": "isSupplementTo",
+      "resource_type": "dataset"
+    }
+  ],
+  "access_right": "open"
+}
