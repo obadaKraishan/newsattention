@@ -1,7 +1,8 @@
 # Method
 
-**The measures in section 2 are accepted. The roles of linked pages (section 4) are still a
-DRAFT until the hand check is scored.** Numbers marked "prototype" come from a 28-day sample
+**The measures in section 2 are accepted. The roles of linked pages (section 4) are left out
+of the first release (0.1.0): rule version 1 scored below its target, and section 4 records
+it and its validation as they came out.** Numbers marked "prototype" come from a 28-day sample
 (portal days 2026-10-16 to 2026-11-12); numbers marked "version 1" come from the backfill from
 2023-02-06.
 
@@ -165,7 +166,7 @@ language, age and access to the internet, so a low count can mean little interes
 use of Wikipedia. Bots that pass as human readers are filtered by Wikimedia's heuristics but
 not perfectly.
 
-## 4. The role of each linked page (DRAFT: version 1 scores below its target)
+## 4. The role of each linked page (version 1, left out of release 0.1.0)
 Most links point to general pages. Every linked page of every event gets one role, by a rule
 that reads only stored signals (no model), with a confidence:
 
@@ -239,9 +240,9 @@ drawn and was not changed on the sampled events.
   separated them on those 40 events, so the rule was not changed.
 - **Freeze.** Version 1 was frozen on 2026-11-17 at 19:39:49 UTC, before any answer was read:
   `roles.py` with SHA-256 `a5109464712a6c79324fe1125f6ef933a1b7afceeba03abf3cf09410e32f7ac8`.
-  The scoring command refuses an answer key made from any other `roles.py`. The rule stays as
-  it is until its variant with classes is scored; after that the sheets are a development set,
-  and a later version needs a new sample.
+  The scoring command refuses an answer key made from any other `roles.py`. With the roles left
+  out of the first release (below), the three sheets are now a development set, and a later
+  version needs a new sample.
 
 **Scores of version 1 without classes** (weighted over the frame; 90% intervals from a
 stratified bootstrap of 10,000 resamples, seed 20261117; target 90%):
@@ -285,7 +286,27 @@ a note to 73 of the 150 events.
 without looking at any answer) is kept blind for a second pass by the same reader, on or after
 2026-11-24, to measure how often two passes agree.
 
-The roles stay DRAFT.
+**Against answering "none" every time.** A rule that names no page for any event is a fair
+baseline here, because most events have no article of their own:
+
+| | Q1: the event's own article | Q2: the larger story |
+|---|---|---|
+| Version 1 right, all events | 82.2% | 71.2% |
+| "None" every time right | 86.4% | 50.5% |
+| Precision (when the rule names a page, it is the reviewer's) | 36% | 59% |
+| Recall (of the reviewer's pages, the rule names) | 43% | 77% |
+
+Precision and recall are weighted like the scores (ratio estimates over the frame): the rule
+named an own article for 75 sampled events and was right for 28; the reviewer named one for 37,
+of which the rule found 28. For the larger story, 46 of the rule's 91 and of the reviewer's 85
+agree.
+
+**Decision (2026-11-23): the roles are left out of the first release.** `role` and
+`role_confidence` are not in release 0.1.0. The signals a user can apply stay in: `in_text`
+(the event's own text links the page), `story_level` (the story heading above it), the
+creation estimate and the moves (`pages`). The three sheets are now a development set: a later
+rule is developed against them, with or without the Wikidata classes, and released only after
+it passes on a new hand-checked sample.
 
 ## 5. Known gaps
 - **Events with no article.** Some events link only to general pages; their attention is only
