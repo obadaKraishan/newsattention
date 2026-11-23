@@ -1,0 +1,46 @@
+name: Correction
+description: Tell us that a link, a count, a measure or a country status in NewsAttention is wrong.
+title: "Correction: "
+labels: ["correction"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        NewsAttention links the news events of Wikipedia's Current Events Portal to page views.
+        If something in the tables is wrong, tell us what and where. We answer within 14 days.
+        What happens next is in docs/corrections.md. The wording of an event is the portal's:
+        please correct it on Wikipedia, and the next re-read brings the change in.
+  - type: dropdown
+    id: what
+    attributes:
+      label: What is wrong?
+      options:
+        - A link leads to the wrong article
+        - A count of views
+        - A measure (baseline, lift, peak, half-life, breadth)
+        - A country status
+        - A page move or an old title
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: "The table and the row: an event id (like 2026-11-01-0123abcd), a Wikidata id (like Q42), a language edition (like en.wikipedia), a country and a date, as they apply."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version you used (manifest.json names it), for example 0.1.0.
+    validations:
+      required: false
+  - type: textarea
+    id: details
+    attributes:
+      label: What you found, and what you expected
+      description: How you know, for example the source you compared with.
+    validations:
+      required: true

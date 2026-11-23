@@ -476,3 +476,14 @@ def test_page_commands(monkeypatch, tmp_path: Path, capsys):
     monkeypatch.setattr(hfpage, "signed_out_get", fail)
     assert cli.main(["page", "headings", "--card", str(card)]) == 2
     assert "CANNOT TELL" in capsys.readouterr().out
+
+
+def test_the_issue_forms_name_their_labels_and_the_answer_time():
+    forms = Path(__file__).parent.parent / ".github" / "ISSUE_TEMPLATE"
+    for name, label in (("correction.yml", "correction"), ("removal.yml", "removal")):
+        text = (forms / name).read_text()
+        assert f'labels: ["{label}"]' in text
+        assert "within 14 days" in text and "docs/corrections.md" in text
+    doc = (Path(__file__).parent.parent / "docs" / "corrections.md").read_text()
+    assert ",".join(release.REMOVAL_FIELDS) == "kind,id,received,issue,reason"
+    assert all(f"`{field}`" in doc for field in release.REMOVAL_FIELDS)

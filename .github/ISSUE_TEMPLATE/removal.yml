@@ -1,0 +1,44 @@
+name: Removal request
+description: Ask that an event or an article be taken out of NewsAttention.
+title: "Removal request: "
+labels: ["removal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If an event or an article should not be listed in NewsAttention (for example, it names a
+        private person), tell us which one and why. If we agree, it goes on the removal list,
+        and its rows leave the next version; earlier versions stay in the dataset's file
+        history. We answer within 14 days. What happens next is in docs/corrections.md.
+        This issue is public: please do not write private details about anyone here.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What should be taken out?
+      options:
+        - An event (give its event id)
+        - An article linked from events (give its Wikidata id or its English page id)
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: identifier
+    attributes:
+      label: The event id, Wikidata id or page id
+      description: "An event id looks like 2026-11-01-0123abcd; a Wikidata id like Q42; a page id is a whole number."
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it should be taken out
+      description: For example, a privacy concern, a copyright claim or an error.
+    validations:
+      required: true
+  - type: input
+    id: who
+    attributes:
+      label: Who is asking (optional)
+      description: Your name or the organization you act for. Leave it empty if you prefer.
+    validations:
+      required: false
