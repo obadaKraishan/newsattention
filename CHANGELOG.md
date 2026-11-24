@@ -13,6 +13,8 @@ All notable changes to this project are documented here. The format follows
   names the dataset's Community tab on Hugging Face as a second route; "Sources" says that no row
   is produced or labeled by a language model.
 - The README and `CITATION.cff` give the Zenodo DOIs (all versions and release 0.1.0).
+- `docs/paper-facts.md`: every figure the card and the method give, with where it comes from and
+  when; the data card document describes release 0.1.0 as published, with its addresses.
 
 ## [0.1.0] - 2026-11-24
 
