@@ -1,19 +1,28 @@
-# DRAFT: nothing has been released yet. The version, date and DOI are filled in at release.
+# The preferred citation is the dataset and its version on Hugging Face, so that GitHub's "Cite
+# this repository" gives the dataset. Zenodo archives each GitHub release of this repository
+# (the code and documents, no data) from .zenodo.json, which it reads in place of this file.
 cff-version: 1.2.0
-message: "If you use NewsAttention, please cite it as below."
+message: "If you use NewsAttention, please cite the dataset and its version as below, and credit Wikipedia's contributors when you use the event text (see the dataset card's How to cite)."
 type: software
-title: "NewsAttention: daily news events linked to how many people read about them on Wikipedia"
+title: "NewsAttention: software and documentation for a daily dataset of news events and Wikipedia page views"
+version: "0.1.0"
+date-released: "2026-11-24"
 abstract: >-
-  NewsAttention links the dated news events listed on Wikipedia's Current Events Portal to
-  daily page views of the articles they link to, by language edition (Wikimedia Analytics API)
-  and by country (Wikimedia's differentially private page-view files), with derived measures
-  of attention: baseline, lift, peak day, half-life and breadth.
+  NewsAttention links each day's news events, as English Wikipedia's Current Events Portal lists
+  them, to how many people read the Wikipedia articles each event links to: by language edition
+  (exact daily counts from the Wikimedia Analytics API) and by country (Wikimedia's published,
+  privacy-protected daily counts, used as published), with measures of attention: baseline,
+  lift, excess views, peak day, half-life and breadth. Version 0.1.0 holds 21,997 events from
+  2023-02-06 to 2026-11-22 and their daily views from 2023-01-09 to 2026-11-22. This repository
+  holds the software that builds and checks the dataset, and its documents.
 authors:
   - family-names: Kraishan
     given-names: Obada
     affiliation: "College of Media and Communication, Texas Tech University"
+    orcid: "https://orcid.org/0009-0007-7180-8620"
 license: Apache-2.0
 repository-code: "https://github.com/obadaKraishan/newsattention"
+url: "https://huggingface.co/datasets/obadakr/newsattention"
 keywords:
   - public attention
   - news events
@@ -21,3 +30,17 @@ keywords:
   - communication research
   - journalism
   - dataset
+preferred-citation:
+  type: data
+  title: "NewsAttention: Daily news events linked to how many people read about them on Wikipedia"
+  authors:
+    - family-names: Kraishan
+      given-names: Obada
+      affiliation: "College of Media and Communication, Texas Tech University"
+      orcid: "https://orcid.org/0009-0007-7180-8620"
+  year: 2026
+  version: "0.1.0"
+  date-released: "2026-11-24"
+  publisher:
+    name: "Hugging Face"
+  url: "https://huggingface.co/datasets/obadakr/newsattention"

@@ -5,9 +5,15 @@ about them on Wikipedia, by country and by language. It is built for communicati
 journalism researchers who need open, comparable data on public attention: how long attention
 to an event lasts, where it travels, and which events never get any.
 
-**Status: the first release (0.1.0) is being prepared.** Nothing has been published yet.
-The dataset will be on Hugging Face (`obadakr/newsattention`), with a Kaggle mirror; see the
-[release layout](docs/release-layout.md).
+**Status: release 0.1.0 is published** (24 November 2026):
+- the dataset on Hugging Face: <https://huggingface.co/datasets/obadakr/newsattention> (tag
+  `v0.1.0`);
+- a mirror of the same tables on Kaggle:
+  <https://www.kaggle.com/datasets/obadakraishan/newsattention>.
+
+Version 0.1.0 holds 21,997 events from 2023-02-06 to 2026-11-22; daily views from 2023-01-09 to
+2026-11-22. The tables, their licenses and how each measure is made are on the dataset card and
+in the [release layout](docs/release-layout.md).
 
 ## What it measures
 - **Events:** the dated news events that Wikipedia's volunteer editors list on the English
@@ -50,6 +56,18 @@ uv run pytest
 - [Prior art](docs/prior-art.md)
 - [Automation (design)](docs/automation.md)
 - [Ethics](docs/ethics.md)
+
+## How to cite
+Cite the dataset with its version:
+
+> Kraishan, O. (2026). *NewsAttention: Daily news events linked to how many people read about
+> them on Wikipedia* (Version 0.1.0) [Data set]. Hugging Face.
+> https://huggingface.co/datasets/obadakr/newsattention
+
+When you use the event text, please also credit Wikipedia's contributors: the text is from
+Wikipedia's Current Events Portal, under CC BY-SA 4.0, and each event row names the portal page
+and the revision it was read from. `CITATION.cff` gives the dataset's citation for GitHub's
+"Cite this repository"; the dataset card's "How to cite" also gives a BibTeX entry.
 
 ## Corrections and removals
 Use the repository's issue forms: one for a correction (a wrong link, count, measure or country

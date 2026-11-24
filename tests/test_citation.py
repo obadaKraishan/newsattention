@@ -100,3 +100,35 @@ def test_the_card_command(tmp_path: Path, capsys):
     assert "written:" in capsys.readouterr().out
     (pack / "stray.txt").write_text("x")
     assert cli.main([*args, "--removals", str(removals)]) == 1
+
+
+ROOT = Path(__file__).parent.parent
+
+
+def test_the_readme_cites_the_data_set_word_for_word():
+    from newsattention import __version__
+
+    readme = (ROOT / "README.md").read_text()
+    section = readme[readme.index("## How to cite") :]
+    quoted = " ".join(
+        line.removeprefix("> ").strip() for line in section.splitlines() if line.startswith(">")
+    )
+    assert quoted == citation.apa(__version__)
+
+
+def test_citation_cff_and_zenodo_follow_the_citation_and_the_version():
+    import re
+
+    from newsattention import __version__
+
+    cff = (ROOT / "CITATION.cff").read_text()
+    preferred = cff[cff.index("preferred-citation:") :]
+    assert f'title: "{citation.TITLE}"' in preferred
+    assert f'version: "{__version__}"' in preferred and "type: data" in preferred
+    assert f'url: "{citation.URL}"' in preferred
+    assert cff.count(f'orcid: "{citation.ORCID}"') == 2
+    assert re.search(rf'^version: "{re.escape(__version__)}"$', cff, re.M)
+    assert "DRAFT" not in cff
+    zenodo = json.loads((ROOT / ".zenodo.json").read_text())
+    assert zenodo["version"] == __version__
+    assert zenodo["creators"][0]["orcid"] == citation.ORCID.rsplit("/", 1)[1]
