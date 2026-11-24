@@ -872,9 +872,11 @@ KAGGLE_KEYWORDS = (
     "internet",
     "social science",
     "time series analysis",
-    "politics",
     "tabular",
 )
+#: Kaggle's create accepts at most 5 tags ("You have exceeded the max category limit",
+#: 2026-11-24, with six). A metadata update after creation may hold more; the folder keeps 5.
+KAGGLE_MAX_TAGS = 5
 KAGGLE_UPDATE_FREQUENCY = "not specified"
 KAGGLE_COVER = "dataset-cover-image.png"
 KAGGLE_SOURCES = (
@@ -1040,6 +1042,11 @@ def kaggle_metadata_problems(meta: Mapping[str, Any], version: str | None = None
     if not lo <= len(meta.get("subtitle", "")) <= hi:
         out.append(
             f"Kaggle subtitle: {len(meta.get('subtitle', ''))} characters, not {lo} to {hi}."
+        )
+    if len(meta.get("keywords", [])) > KAGGLE_MAX_TAGS:
+        out.append(
+            f"Kaggle keywords: {len(meta['keywords'])} tags; Kaggle's create accepts at most "
+            f"{KAGGLE_MAX_TAGS} and refuses the dataset otherwise."
         )
     unknown = [k for k in meta.get("keywords", []) if k not in KAGGLE_KEYWORDS]
     if unknown:
