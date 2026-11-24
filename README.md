@@ -1,5 +1,7 @@
 # NewsAttention
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24487868.svg)](https://doi.org/10.5281/zenodo.24487868)
+
 NewsAttention is a daily dataset that links each day's news events to how many people read
 about them on Wikipedia, by country and by language. It is built for communication and
 journalism researchers who need open, comparable data on public attention: how long attention
@@ -66,8 +68,13 @@ Cite the dataset with its version:
 
 When you use the event text, please also credit Wikipedia's contributors: the text is from
 Wikipedia's Current Events Portal, under CC BY-SA 4.0, and each event row names the portal page
-and the revision it was read from. `CITATION.cff` gives the dataset's citation for GitHub's
-"Cite this repository"; the dataset card's "How to cite" also gives a BibTeX entry.
+and the revision it was read from.
+
+The code and documents that build the dataset (no data table) are archived on Zenodo:
+https://doi.org/10.5281/zenodo.24487868 (all versions; it resolves to the latest), and release
+0.1.0's at https://doi.org/10.5281/zenodo.24487869. `CITATION.cff` gives the dataset's citation
+for GitHub's "Cite this repository", with both DOIs; the dataset card's "How to cite" also gives
+a BibTeX entry.
 
 ## Corrections and removals
 Use the repository's issue forms: one for a correction (a wrong link, count, measure or country
