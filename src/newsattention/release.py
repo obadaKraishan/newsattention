@@ -647,7 +647,7 @@ def licenses_text(manifest: Mapping[str, Any]) -> str:
 
 
 def rewrite_card(pack_dir: Path | str, kaggle_dir: Path | str | None = None) -> list[str]:
-    """Write the card (and the Kaggle description) again from the pack's manifest.
+    """Write the card (and the Kaggle folder's metadata) again from the pack's manifest.
 
     Nothing else changes: the data files, the manifest, ``LICENSES.md`` and the Kaggle folder's
     other files stay as they are. Returns the files written.
@@ -659,10 +659,8 @@ def rewrite_card(pack_dir: Path | str, kaggle_dir: Path | str | None = None) -> 
     if kaggle_dir is not None:
         k = Path(kaggle_dir)
         meta_path = k / "dataset-metadata.json"
-        meta = json.loads(meta_path.read_text())
         km = json.loads((k / "manifest.json").read_text())
-        meta["description"] = kaggle_description(manifest, km["files"])
-        meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+        meta_path.write_text(json.dumps(kaggle_metadata(manifest, km["files"]), indent=2) + "\n")
         written.append(str(meta_path))
     return written
 
@@ -866,9 +864,17 @@ KAGGLE_SUBTITLE_LIMITS = (20, 80)
 #: be shared under it, so CC BY-SA 4.0 is the one license that is true of every file; the CC0
 #: tables stay CC0 (LICENSES.md, in the mirror too, says so per table).
 KAGGLE_LICENSE = "CC-BY-SA-4.0"
-#: Tags Kaggle is known to accept. An unknown tag makes Kaggle refuse
-#: the whole metadata update, so a tag is added here only once Kaggle has shown it accepts it.
-KAGGLE_KEYWORDS = ("news",)
+#: Kaggle's own tag names (with spaces), each seen on public datasets in Kaggle's listing on
+#: 2026-11-24 before anything was sent. An unknown tag makes Kaggle refuse the whole metadata
+#: update, so a tag is added here only after that check.
+KAGGLE_KEYWORDS = (
+    "news",
+    "internet",
+    "social science",
+    "time series analysis",
+    "politics",
+    "tabular",
+)
 KAGGLE_UPDATE_FREQUENCY = "not specified"
 KAGGLE_COVER = "dataset-cover-image.png"
 KAGGLE_SOURCES = (
@@ -899,6 +905,85 @@ def kaggle_files_markdown(files: list[dict[str, Any]]) -> str:
 def kaggle_description(manifest: Mapping[str, Any], files: list[dict[str, Any]]) -> str:
     values = card_values(manifest) | {"tables_table": kaggle_files_markdown(files)}
     return fill(_template("kaggle_description.md"), values)
+
+
+def kaggle_metadata(manifest: Mapping[str, Any], files: list[dict[str, Any]]) -> dict[str, Any]:
+    """The Kaggle page as the folder holds it (``isPrivate`` true: ``create`` makes it private)."""
+    resources_ = [
+        {"path": f["path"], "description": f"One row per {SPECS[f['table']].row}."} for f in files
+    ] + [
+        {"path": "LICENSES.md", "description": "Which license applies to which table and column."},
+        {
+            "path": "manifest.json",
+            "description": "Every file with its rows, size and SHA-256, and when each source "
+            "was read.",
+        },
+    ]
+    return {
+        "title": KAGGLE_TITLE,
+        "id": KAGGLE_ID,
+        "subtitle": KAGGLE_SUBTITLE,
+        "description": kaggle_description(manifest, files),
+        "isPrivate": True,
+        "licenses": [{"name": KAGGLE_LICENSE}],
+        "keywords": list(KAGGLE_KEYWORDS),
+        "expectedUpdateFrequency": KAGGLE_UPDATE_FREQUENCY,
+        "userSpecifiedSources": KAGGLE_SOURCES,
+        "resources": resources_,
+    }
+
+
+#: What a metadata update takes from the folder; the title, subtitle and license must already
+#: be the folder's, and the visibility is the live page's, given explicitly.
+FROM_FOLDER = (
+    "description",
+    "keywords",
+    "expectedUpdateFrequency",
+    "userSpecifiedSources",
+    "resources",
+)
+
+
+def kaggle_settings(
+    live: Mapping[str, Any], meta: Mapping[str, Any], private: bool
+) -> tuple[dict[str, Any], list[str]]:
+    """The file for ``kaggle datasets metadata --update``, from the live settings (as
+    ``kaggle datasets metadata`` downloads them, wrapped in ``info`` or not) and the folder's.
+
+    The update sends every field, and a missing ``isPrivate`` makes the dataset public, so the
+    visibility is given by the caller (checked signed out) and must agree with the live
+    settings, which leave ``isPrivate`` out when it is false. A tag added on the website stays.
+    """
+    info = live.get("info") or live
+    problems = []
+    live_private = bool(info.get("isPrivate", False))
+    if live_private != private:
+        problems.append(
+            f"the live settings say the dataset is {'private' if live_private else 'public'}, "
+            f"and this update was asked for a {'private' if private else 'public'} one; "
+            "nothing is sent."
+        )
+    for field in ("title", "subtitle"):
+        if info.get(field) != meta.get(field):
+            problems.append(
+                f"the live {field} is {info.get(field)!r}, not the folder's {meta.get(field)!r}; "
+                "change it on the website or in the code first."
+            )
+    live_licenses = [lic.get("name") for lic in info.get("licenses") or []]
+    if live_licenses != [lic["name"] for lic in meta["licenses"]]:
+        problems.append(f"the live license is {live_licenses}, not the folder's.")
+    out = {
+        "id": meta["id"],
+        "title": meta["title"],
+        "subtitle": meta["subtitle"],
+        "isPrivate": private,
+        "licenses": meta["licenses"],
+        **{k: meta[k] for k in FROM_FOLDER},
+    }
+    out["keywords"] = list(dict.fromkeys([*meta["keywords"], *(info.get("keywords") or [])]))
+    if info.get("collaborators"):
+        out["collaborators"] = info["collaborators"]
+    return out, problems
 
 
 def build_kaggle(pack_dir: Path | str, out_dir: Path | str) -> dict[str, Any]:
@@ -940,29 +1025,9 @@ def build_kaggle(pack_dir: Path | str, out_dir: Path | str) -> dict[str, Any]:
     }
     (out / "manifest.json").write_text(json.dumps(kaggle_manifest, indent=2) + "\n")
     cover.write_png(out / KAGGLE_COVER)
-    resources_ = [
-        {"path": f["path"], "description": f"One row per {SPECS[f['table']].row}."} for f in files
-    ] + [
-        {"path": "LICENSES.md", "description": "Which license applies to which table and column."},
-        {
-            "path": "manifest.json",
-            "description": "Every file with its rows, size and SHA-256, and when each source "
-            "was read.",
-        },
-    ]
-    meta = {
-        "title": KAGGLE_TITLE,
-        "id": KAGGLE_ID,
-        "subtitle": KAGGLE_SUBTITLE,
-        "description": kaggle_description(manifest, files),
-        "isPrivate": True,
-        "licenses": [{"name": KAGGLE_LICENSE}],
-        "keywords": list(KAGGLE_KEYWORDS),
-        "expectedUpdateFrequency": KAGGLE_UPDATE_FREQUENCY,
-        "userSpecifiedSources": KAGGLE_SOURCES,
-        "resources": resources_,
-    }
-    (out / "dataset-metadata.json").write_text(json.dumps(meta, indent=2) + "\n")
+    (out / "dataset-metadata.json").write_text(
+        json.dumps(kaggle_metadata(manifest, files), indent=2) + "\n"
+    )
     return kaggle_manifest
 
 
@@ -1116,6 +1181,25 @@ def cmd_card(args: Any) -> int:
     return 1 if problems else 0
 
 
+def cmd_kaggle_settings(args: Any) -> int:
+    k, out = Path(args.kaggle), Path(args.out)
+    meta = json.loads((k / "dataset-metadata.json").read_text())
+    live = json.loads(Path(args.live).read_text())
+    settings, problems = kaggle_settings(live, meta, args.visibility == "private")
+    for p in problems:
+        print("PROBLEM:", p)
+    if problems:
+        return 1
+    out.mkdir(parents=True, exist_ok=False)
+    (out / "dataset-metadata.json").write_text(json.dumps(settings, indent=2) + "\n")
+    shutil.copyfile(k / KAGGLE_COVER, out / KAGGLE_COVER)
+    print(
+        f"written: {out / 'dataset-metadata.json'} (isPrivate {settings['isPrivate']}, "
+        f"tags {settings['keywords']}) and the cover"
+    )
+    return 0
+
+
 def cmd_page(args: Any) -> int:
     if args.page_command == "visibility":
         try:
@@ -1165,11 +1249,23 @@ def register(sub: Any) -> None:
     k.add_argument("--out", type=Path, required=True)
     k.set_defaults(func=cmd_kaggle)
 
-    cd = rsub.add_parser("card", help="write the card and the Kaggle description again")
+    cd = rsub.add_parser("card", help="write the card and the Kaggle metadata again")
     cd.add_argument("--pack", type=Path, required=True)
     cd.add_argument("--kaggle", type=Path)
     cd.add_argument("--removals", type=Path, default=Path("data/removals.csv"))
     cd.set_defaults(func=cmd_card)
+
+    ks = rsub.add_parser(
+        "kaggle-settings",
+        help="the file for a Kaggle metadata update: live settings merged with the folder's page",
+    )
+    ks.add_argument("--kaggle", type=Path, required=True, help="the Kaggle folder")
+    ks.add_argument(
+        "--live", type=Path, required=True, help="dataset-metadata.json as Kaggle has it"
+    )
+    ks.add_argument("--visibility", required=True, choices=("private", "public"))
+    ks.add_argument("--out", type=Path, required=True, help="a new folder for the update's files")
+    ks.set_defaults(func=cmd_kaggle_settings)
 
     page = sub.add_parser("page", help="signed-out checks of the Hugging Face page")
     psub = page.add_subparsers(dest="page_command", required=True)

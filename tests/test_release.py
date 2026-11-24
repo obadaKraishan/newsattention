@@ -523,3 +523,45 @@ def test_released_event_pages_validate_without_the_roles(pack: Path, tmp_path: P
     pq.write_table(t.append_column("role", pa.array(["context"] * t.num_rows)), half)
     report = validate_file(half)
     assert not report.ok and "missing: role_confidence" in report.errors[0]
+
+
+def test_kaggle_settings_carry_the_visibility_and_refuse_a_mismatch(pack: Path, tmp_path: Path):
+    kaggle = tmp_path / "kaggle"
+    release.build_kaggle(pack, kaggle)
+    meta = json.loads((kaggle / "dataset-metadata.json").read_text())
+    assert (
+        meta["keywords"] == list(release.KAGGLE_KEYWORDS) and "social science" in meta["keywords"]
+    )
+    # Kaggle's download leaves out a false isPrivate, wraps the settings in "info", and keeps a
+    # tag added on the website.
+    live = {"info": {k: meta[k] for k in ("title", "subtitle", "licenses")}}
+    live["info"]["keywords"] = ["news", "added on the website"]
+    out, problems = release.kaggle_settings(live, meta, private=False)
+    assert problems == [] and out["isPrivate"] is False
+    assert (
+        out["keywords"][-1] == "added on the website" and out["description"] == meta["description"]
+    )
+    _, problems = release.kaggle_settings(live, meta, private=True)
+    assert any("live settings say the dataset is public" in p for p in problems)
+    live["info"]["isPrivate"] = True
+    live["info"]["title"] = "Another title"
+    out, problems = release.kaggle_settings(live, meta, private=True)
+    assert out["isPrivate"] is True and any("live title" in p for p in problems)
+    live["info"] = {**live["info"], "title": meta["title"], "licenses": [{"name": "CC0-1.0"}]}
+    assert any("live license" in p for p in release.kaggle_settings(live, meta, True)[1])
+
+
+def test_the_kaggle_settings_command(pack: Path, tmp_path: Path, capsys):
+    kaggle = tmp_path / "kaggle"
+    release.build_kaggle(pack, kaggle)
+    meta = json.loads((kaggle / "dataset-metadata.json").read_text())
+    live = tmp_path / "live.json"
+    live.write_text(
+        json.dumps({k: meta[k] for k in ("title", "subtitle", "licenses", "isPrivate")})
+    )
+    args = ["release", "kaggle-settings", "--kaggle", str(kaggle), "--live", str(live)]
+    assert cli.main([*args, "--visibility", "public", "--out", str(tmp_path / "a")]) == 1
+    assert cli.main([*args, "--visibility", "private", "--out", str(tmp_path / "b")]) == 0
+    sent = json.loads((tmp_path / "b" / "dataset-metadata.json").read_text())
+    assert sent["isPrivate"] is True and (tmp_path / "b" / release.KAGGLE_COVER).exists()
+    assert "PROBLEM" in capsys.readouterr().out
