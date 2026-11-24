@@ -628,6 +628,7 @@ def card_values(manifest: Mapping[str, Any]) -> dict[str, Any]:
         "repo": REPO_URL,
         "removal_entries": manifest["removals"]["entries"],
         "how_to_cite": citation.how_to_cite(manifest["version"]),
+        "kaggle_url": f"https://www.kaggle.com/datasets/{KAGGLE_ID}",
     }
 
 

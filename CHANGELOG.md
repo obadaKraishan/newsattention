@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- The card's "How to cite" gives, after the citation and the BibTeX entry, the release date and
+  the Zenodo DOIs of the code and documents (no data table); the card gives the Kaggle mirror's
+  address; "Corrections and removals" says that the issue forms need a free GitHub account and
+  names the dataset's Community tab on Hugging Face as a second route; "Sources" says that no row
+  is produced or labeled by a language model.
+- The README and `CITATION.cff` give the Zenodo DOIs (all versions and release 0.1.0).
+
 ## [0.1.0] - 2026-11-24
 
 Release 0.1.0 is published: the dataset on Hugging Face

@@ -15,6 +15,11 @@ PUBLISHER = "Hugging Face"
 URL = "https://huggingface.co/datasets/obadakr/newsattention"
 #: The year of release 0.1.0.
 YEAR = 2026
+#: The day each release was published, and the DOIs of the code and documents on Zenodo (no
+#: data table): one for all versions (it resolves to the latest) and one per release.
+RELEASE_DATES = {"0.1.0": "2026-11-24"}
+ZENODO_ALL_VERSIONS = "10.5281/zenodo.24487868"
+ZENODO_RELEASES = {"0.1.0": "10.5281/zenodo.24487869"}
 #: The credit the event text asks for, given after the citation.
 WIKIPEDIA_CREDIT = (
     "When you use the event text, please also credit Wikipedia's contributors: the text is from "
@@ -50,9 +55,30 @@ def bibtex(version: str, year: int = YEAR) -> str:
     )
 
 
+def archive_sentence(version: str) -> str | None:
+    """The release date and the Zenodo DOI of the code and documents, once the archive exists."""
+    date = RELEASE_DATES.get(version)
+    if date is None:
+        return None
+    text = (
+        f"Release {version} was published on {date}. The code and documents that build the "
+        "dataset (no data table) are archived on Zenodo: "
+        f"https://doi.org/{ZENODO_ALL_VERSIONS} (all versions)"
+    )
+    if version in ZENODO_RELEASES:
+        text += f"; release {version}: https://doi.org/{ZENODO_RELEASES[version]}"
+    return text + "."
+
+
 def how_to_cite(version: str) -> str:
-    """The body of a "How to cite" section: the citation, the BibTeX entry, the credit."""
-    return f"{apa(version)}\n\n```bibtex\n{bibtex(version)}\n```\n\n{WIKIPEDIA_CREDIT}"
+    """The body of a "How to cite" section: the citation, the BibTeX entry, the release date and
+    the Zenodo DOI of the code and documents (once released), then the credit."""
+    parts = [apa(version), f"```bibtex\n{bibtex(version)}\n```"]
+    archive = archive_sentence(version)
+    if archive:
+        parts.append(archive)
+    parts.append(WIKIPEDIA_CREDIT)
+    return "\n\n".join(parts)
 
 
 def opens_with_citation(text: str, version: str) -> bool:

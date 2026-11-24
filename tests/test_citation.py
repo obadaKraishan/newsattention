@@ -38,12 +38,19 @@ def test_the_bibtex_entry_says_the_same():
     assert entry.count("{") == entry.count("}")
 
 
-def test_how_to_cite_opens_with_the_citation_then_bibtex_then_the_credit():
+def test_how_to_cite_opens_with_the_citation_then_bibtex_the_archive_and_the_credit():
     body = citation.how_to_cite("0.1.0")
-    first, second, third = body.split("\n\n", 2)
+    first, second, third, fourth = body.split("\n\n", 3)
     assert first == WANTED
     assert second.startswith("```bibtex\n@misc{") and second.endswith("```")
-    assert third == citation.WIKIPEDIA_CREDIT
+    assert third.startswith("Release 0.1.0 was published on 2026-11-24.")
+    assert "(no data table)" in third
+    assert "https://doi.org/10.5281/zenodo.24487868 (all versions)" in third
+    assert "https://doi.org/10.5281/zenodo.24487869" in third
+    assert fourth == citation.WIKIPEDIA_CREDIT
+    # A version not yet released has no archive sentence.
+    assert citation.archive_sentence("0.2.0") is None
+    assert len(citation.how_to_cite("0.2.0").split("\n\n")) == 3
     text = "# X\n\n## How to cite\n\n" + body + "\n\n## Next\n"
     assert citation.opens_with_citation(text, "0.1.0")
     assert not citation.opens_with_citation(text, "0.1.1")
@@ -132,3 +139,13 @@ def test_citation_cff_and_zenodo_follow_the_citation_and_the_version():
     zenodo = json.loads((ROOT / ".zenodo.json").read_text())
     assert zenodo["version"] == __version__
     assert zenodo["creators"][0]["orcid"] == citation.ORCID.rsplit("/", 1)[1]
+
+
+def test_the_readme_and_citation_cff_give_both_dois():
+    readme = (ROOT / "README.md").read_text()
+    cff = (ROOT / "CITATION.cff").read_text()
+    for doi in (citation.ZENODO_ALL_VERSIONS, citation.ZENODO_RELEASES["0.1.0"]):
+        assert f"https://doi.org/{doi}" in readme
+        assert f"value: {doi}" in cff
+    assert f"doi: {citation.ZENODO_ALL_VERSIONS}" in cff
+    assert f"zenodo.org/badge/DOI/{citation.ZENODO_ALL_VERSIONS}.svg" in readme

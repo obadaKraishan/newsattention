@@ -42,6 +42,8 @@ views = load_dataset("{{dataset}}", data_files="views_api/2026-10.parquet", spli
 
 Any Parquet reader works too, for example `pandas.read_parquet("hf://datasets/{{dataset}}/events/")`.
 
+A mirror of the same tables, one file per table, is on Kaggle: {{kaggle_url}}.
+
 ## The tables
 
 {{tables_table}}
@@ -76,7 +78,7 @@ its rows, size and SHA-256.
   read {{read_country}}).
 
 Every row is computed by code from these sources. No row is written or edited by hand, and no
-language model is used.
+row is produced or labeled by a language model.
 
 ## How each measure is made
 
@@ -184,7 +186,9 @@ checked on a new sample before any role is released.
 
 Use the issue forms of the repository ({{repo}}/issues/new/choose): one for a correction (a
 wrong link, count or measure) and one for a removal (for example, an event or article that
-should not be listed). Each request is answered within 14 days. A removal is added to the
+should not be listed). Opening an issue there needs a free GitHub account; this dataset's
+Community tab on Hugging Face (https://huggingface.co/datasets/{{dataset}}/discussions) is a
+second route, with a free Hugging Face account. Each request is answered within 14 days. A removal is added to the
 removal list that every build reads, so the rows leave the next version; earlier versions stay
 in the Hub's file history. Corrections to an event's wording belong on the portal itself and
 arrive with the next re-read. This version's removal list has {{removal_entries}} entries.

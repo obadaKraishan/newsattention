@@ -60,7 +60,7 @@ tables but are **not released** (see below).
   daily differentially private file by country, project and page, filtered to the linked items.
 - **Measures:** see the [method](method.md).
 - **Provenance:** every row is computed by code from the sources; no row is written or edited
-  by hand, and no language model is used.
+  by hand, and no row is produced or labeled by a language model.
 
 ## Size
 Release 0.1.0 as built on 2026-11-23 (portal days 2023-02-06 to 2026-11-22, views from
