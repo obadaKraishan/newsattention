@@ -22,11 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # Pushes and pull requests run Python 3.12 only, to keep CI minutes low. The full matrix
-      # (3.10 to 3.13, as the package declares) runs when the workflow is started by hand,
-      # before a release.
+      # Pushes to main run Python 3.12 only, to keep CI minutes low. Pull requests and a run
+      # started by hand run the full matrix (3.10 to 3.13, as the package declares), the four
+      # checks that protect main.
       matrix:
-        python-version: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["3.10", "3.11", "3.12", "3.13"]') || fromJSON('["3.12"]') }}
+        python-version: ${{ github.event_name == 'push' && fromJSON('["3.12"]') || fromJSON('["3.10", "3.11", "3.12", "3.13"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
