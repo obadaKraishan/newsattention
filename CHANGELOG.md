@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- The repository is public (2026-11-24); `main` is protected by the four CI checks (Python 3.10
+  to 3.13), and every change goes through a pull request.
 - `newsattention.citation`: the data set's citation, defined once (APA 7 for a data set, with
   the version, and the same as a BibTeX entry). The card's and the Kaggle description's "How to
   cite" open with it, then the BibTeX entry, then the credit to Wikipedia's contributors;
