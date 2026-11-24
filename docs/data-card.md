@@ -3,8 +3,8 @@
 The card that ships with each version (`README.md` on Hugging Face) is built by
 `newsattention release build` from [`src/newsattention/dataset_card.md`](../src/newsattention/dataset_card.md),
 with that version's numbers. This page keeps the same facts for the repository, with the build
-behind the first release. **Nothing is public yet:** release 0.1.0 was uploaded to Hugging
-Face as a private dataset on 2026-11-23 for the maintainer's review.
+behind release 0.1.0, **published on 2026-11-24**. The figures, each with where it comes from,
+are in [paper facts](paper-facts.md).
 
 ## Summary
 NewsAttention links each day's news events, as listed on English Wikipedia's Current Events
@@ -20,8 +20,10 @@ breadth.
 - **License:** counts, links and measures CC0 1.0; event text CC BY-SA 4.0 with credit
   ([licenses](licenses.md); every version carries a `LICENSES.md` per table and column)
 - **Repository:** <https://github.com/obadaKraishan/newsattention>
-- **Dataset:** Hugging Face `obadakr/newsattention` and a Kaggle mirror (not yet published);
-  the code and documents on Zenodo through a GitHub release (DOI to be added)
+- **Dataset:** <https://huggingface.co/datasets/obadakr/newsattention> (tag `v0.1.0`), with a
+  mirror of the same tables on Kaggle: <https://www.kaggle.com/datasets/obadakraishan/newsattention>
+- **Code and documents (no data table):** Zenodo, DOI 10.5281/zenodo.24487868 (all versions;
+  release 0.1.0: 10.5281/zenodo.24487869)
 
 ## Uses
 - **Intended:** research on public attention to news: how long attention to an event lasts,
@@ -131,9 +133,10 @@ Kraishan, O. (2026). *NewsAttention: Daily news events linked to how many people
 them on Wikipedia* (Version 0.1.0) [Data set]. Hugging Face.
 https://huggingface.co/datasets/obadakr/newsattention
 
-A BibTeX entry and the credit to Wikipedia's contributors follow it. The DOI of the code and
-documents (Zenodo) is added beside it at the public release. `CITATION.cff` describes the
-software.
+A BibTeX entry follows it, then the release date and the Zenodo DOI of the code and documents
+(no data table): https://doi.org/10.5281/zenodo.24487868 (all versions), and the credit to
+Wikipedia's contributors. `CITATION.cff` gives the dataset as the preferred citation, with both
+DOIs.
 
 ## Contact
 The repository's issue forms, for a correction or a removal request; each is answered within
