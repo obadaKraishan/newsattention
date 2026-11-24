@@ -565,3 +565,9 @@ def test_the_kaggle_settings_command(pack: Path, tmp_path: Path, capsys):
     sent = json.loads((tmp_path / "b" / "dataset-metadata.json").read_text())
     assert sent["isPrivate"] is True and (tmp_path / "b" / release.KAGGLE_COVER).exists()
     assert "PROBLEM" in capsys.readouterr().out
+
+
+def test_kaggle_takes_at_most_five_tags():
+    assert len(release.KAGGLE_KEYWORDS) <= release.KAGGLE_MAX_TAGS
+    meta = {"keywords": [*release.KAGGLE_KEYWORDS, "news"][: release.KAGGLE_MAX_TAGS + 1]}
+    assert any("at most 5" in p for p in release.kaggle_metadata_problems(meta))
