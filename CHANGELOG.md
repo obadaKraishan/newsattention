@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-24
+
+Release 0.1.0 is published: the dataset on Hugging Face
+(https://huggingface.co/datasets/obadakr/newsattention, tag `v0.1.0`), with a mirror of the same
+tables on Kaggle (https://www.kaggle.com/datasets/obadakraishan/newsattention). It holds 21,997
+events from 2023-02-06 to 2026-11-22 and their daily views from 2023-01-09 to 2026-11-22; the
+role columns are not in it.
+
 ### Added
 - The repository is public (2026-11-24); `main` is protected by the four CI checks (Python 3.10
   to 3.13), and every change goes through a pull request.
